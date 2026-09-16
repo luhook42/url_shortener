@@ -1,0 +1,5 @@
+development:
+  adapter: postgresql
+  database: url_shortener_development
+  host: localhost
+  encoding: unicode
