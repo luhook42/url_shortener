@@ -25,13 +25,12 @@ def generate_code(length = 7)
   Array.new(length) { CODE_CHARS.sample }.join
 end
 
-get 'links' do
+get '/links' do
   content_type :json
   Link.order(created_at: :desc).to_json
 end
 
 get '/:code' do
-  content_type :json
   code = params['code']
   cache_key = "link:#{code}"
 
