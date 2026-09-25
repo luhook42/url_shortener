@@ -8,7 +8,7 @@ namespace :db do
     require 'securerandom'
 
     codes = []
-    100.times do
+    5000.times do
       link = Link.create!(short_code: generate_code, long_url: "https://example.com/#{SecureRandom.hex(4)}")
       codes << link.short_code
     end

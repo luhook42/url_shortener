@@ -3,3 +3,4 @@ development:
   database: url_shortener_development
   host: localhost
   encoding: unicode
+  pool: <%= Integer(ENV.fetch('DB_POOL', 16)) %>

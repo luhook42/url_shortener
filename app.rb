@@ -29,17 +29,19 @@ get '/:code' do
   code = params['code']
   cache_key = "link:#{code}"
 
+  headers['Cache-Control'] = 'no-cache'
+
   cached_url = RedisPool.pool.with { |redis| redis.get(cache_key) }
   if cached_url
     puts "cache HIT for #{code}"
-    redirect cached_url, 301
+    redirect cached_url, 302
   else
     puts "cache MISS for #{code}, querying postgres"
     link = Link.find_by(short_code: code)
     halt 404, 'not found' unless link
 
     RedisPool.pool.with { |redis| redis.set(cache_key, link.long_url) }
-    redirect link.long_url, 301
+    redirect link.long_url, 302
   end
 end
 
