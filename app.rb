@@ -25,7 +25,13 @@ def generate_code(length = 7)
   Array.new(length) { CODE_CHARS.sample }.join
 end
 
+get 'links' do
+  content_type :json
+  Link.order(created_at: :desc).to_json
+end
+
 get '/:code' do
+  content_type :json
   code = params['code']
   cache_key = "link:#{code}"
 
@@ -46,30 +52,33 @@ get '/:code' do
 end
 
 post '/links' do
+  content_type :json
   long_url = params['url']
-  halt 400, 'missing url' unless long_url
+  halt 400, { error: 'missing url' }.to_json unless long_url
 
   link = nil
   loop do
     link = Link.create!(short_code: generate_code, long_url: long_url)
     break
   rescue ActiveRecord::RecordNotUnique
-    next # collided, try another random code
+    next
   end
 
-  "short link: /#{link.short_code}"
+  status 201
+  link.to_json
 end
 
 put '/links/:code' do
+  content_type :json
   code = params['code']
   link = Link.find_by(short_code: code)
-  halt 404, 'not found' unless link
+  halt 404, { error: 'not found' }.to_json unless link
 
   new_url = params['url']
-  halt 400, 'missing url' unless new_url
+  halt 400, { error: 'missing url' }.to_json unless new_url
 
   link.update!(long_url: new_url)
   RedisPool.pool.with { |redis| redis.del("link:#{code}") }
 
-  "updated: /#{link.short_code} -> #{new_url}"
+  link.to_json
 end
