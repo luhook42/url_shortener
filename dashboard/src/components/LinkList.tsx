@@ -1,27 +1,16 @@
-import { useState, useEffect } from "react";
-
-import { getLinks } from "../api/links";
 import type { Link } from "../types/link";
 
-const LinkList = () => {
-  const [links, setLinks] = useState<Link[]>([]);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const respData = await getLinks();
-        setLinks(respData);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchData();
-  }, []);
-
+const LinkList = ({ links }: { links: Link[] }) => {
   return (
     <div>
       {links.map((link) => (
-        <div key={link.id}>{link.long_url}</div>
+        <div key={link.id}>
+          <a href={`http://localhost:4567/${link.short_code}`}>
+            {link.short_code}
+          </a>
+          {" → "}
+          {link.long_url}
+        </div>
       ))}
     </div>
   );

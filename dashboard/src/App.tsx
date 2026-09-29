@@ -1,10 +1,35 @@
 import "./App.css";
 import LinkList from "./components/LinkList";
+import LinkForm from "./components/LinkForm";
+import { useEffect, useState } from "react";
+import type { Link } from "./types/link";
+import { getLinks } from "./api/links";
 
 function App() {
+  const [links, setLinks] = useState<Link[]>([]);
+
+  const fetchLinks = async () => {
+    try {
+      const respData = await getLinks();
+      setLinks(respData);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleLinkCreated = (newLink: Link) => {
+    setLinks((prevLinks) => [...prevLinks, newLink]);
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchLinks();
+  }, []);
+
   return (
     <div>
-      <LinkList />
+      <LinkForm onLinkCreated={handleLinkCreated} />
+      <LinkList links={links} />
     </div>
   );
 }
