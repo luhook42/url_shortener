@@ -1,12 +1,20 @@
 # frozen_string_literal: true
 
 require 'connection_pool'
+require 'rack/cors'
 require 'redis'
 require 'sinatra'
 require 'sinatra/activerecord'
 require_relative 'models/link'
 
-set :database_file, 'config/database.yml' # we'll add this file next
+use Rack::Cors do
+  allow do
+    origins 'http://localhost:5173'
+    resource '/*', headers: :any, methods: %i[get post put delete options]
+  end
+end
+
+set :database_file, 'config/database.yml'
 
 CODE_CHARS = [*'a'..'z', *'A'..'Z', *'0'..'9'].freeze
 
