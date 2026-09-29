@@ -12,14 +12,14 @@
 
 ActiveRecord::Schema[8.1].define(version: 1) do
   # These are extensions that must be enabled in order to support this database
-  enable_extension "pg_catalog.plpgsql"
+  enable_extension 'pg_catalog.plpgsql'
 
-  create_table "links", force: :cascade do |t|
-    t.integer "click_count", default: 0, null: false
-    t.datetime "created_at", null: false
-    t.string "long_url", null: false
-    t.string "short_code", null: false
-    t.datetime "updated_at", null: false
-    t.index ["short_code"], name: "index_links_on_short_code", unique: true
+  create_table 'links', force: :cascade do |t|
+    t.integer 'click_count', default: 0, null: false
+    t.datetime 'created_at', null: false
+    t.string 'long_url', null: false
+    t.string 'short_code', null: false
+    t.datetime 'updated_at', null: false
+    t.index ['short_code'], name: 'index_links_on_short_code', unique: true
   end
 end
