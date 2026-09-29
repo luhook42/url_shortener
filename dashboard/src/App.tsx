@@ -18,7 +18,7 @@ function App() {
   };
 
   const handleLinkCreated = (newLink: Link) => {
-    setLinks((prevLinks) => [...prevLinks, newLink]);
+    setLinks((prevLinks) => [newLink, ...prevLinks]);
   };
 
   useEffect(() => {
