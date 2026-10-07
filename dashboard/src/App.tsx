@@ -21,6 +21,10 @@ function App() {
     setLinks((prevLinks) => [newLink, ...prevLinks]);
   };
 
+  const handleLinkUpdated = (updated: Link) => {
+    setLinks((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+  };
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchLinks();
@@ -29,7 +33,7 @@ function App() {
   return (
     <div>
       <LinkForm onLinkCreated={handleLinkCreated} />
-      <LinkList links={links} />
+      <LinkList links={links} onLinkUpdated={handleLinkUpdated} />
     </div>
   );
 }

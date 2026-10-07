@@ -1,16 +1,16 @@
 import type { Link } from "../types/link";
+import LinkRow from "./LinkRow";
 
-const LinkList = ({ links }: { links: Link[] }) => {
+type Props = {
+  links: Link[];
+  onLinkUpdated: (link: Link) => void;
+};
+
+const LinkList = ({ links, onLinkUpdated }: Props) => {
   return (
     <div>
       {links.map((link) => (
-        <div key={link.id}>
-          <a href={`http://localhost:4567/${link.short_code}`}>
-            {link.short_code}
-          </a>
-          {" → "}
-          {link.long_url}
-        </div>
+        <LinkRow key={link.id} link={link} onLinkUpdated={onLinkUpdated} />
       ))}
     </div>
   );
