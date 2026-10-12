@@ -20,12 +20,16 @@ CODE_CHARS = [*'a'..'z', *'A'..'Z', *'0'..'9'].freeze
 
 module RedisPool
   def self.pool
-    @pool ||= ConnectionPool.new(size: 16, timeout: 5) { Redis.new }
+    @pool ||= ConnectionPool.new(size: 16, timeout: 5) do
+      Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379'))
+    end
   end
 
   def self.reset!
     @pool&.shutdown { |conn| conn.close }
-    @pool = ConnectionPool.new(size: 16, timeout: 5) { Redis.new }
+    @pool = ConnectionPool.new(size: 16, timeout: 5) do
+      Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379'))
+    end
   end
 end
 
