@@ -7,6 +7,8 @@ require 'sinatra'
 require 'sinatra/activerecord'
 require_relative 'models/link'
 
+raise 'deliberate boot failure' if ENV['RACK_ENV'] == 'development'
+
 use Rack::Cors do
   allow do
     origins 'http://localhost:5173'
