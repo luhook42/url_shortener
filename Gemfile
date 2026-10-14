@@ -13,3 +13,6 @@ gem 'redis'
 gem 'rubocop', '~> 1.91'
 gem 'sinatra'
 gem 'sinatra-activerecord'
+
+gem 'minitest', '~> 6.0', group: :test
+gem 'rack-test', '~> 2.2', group: :test

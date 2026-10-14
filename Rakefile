@@ -1,4 +1,7 @@
+# frozen_string_literal: true
+
 require 'sinatra/activerecord/rake'
+require 'rake/testtask'
 require_relative 'app'
 
 namespace :db do
@@ -16,4 +19,9 @@ namespace :db do
     File.write('codes.json', codes.to_json)
     puts "Seeded #{codes.size} links -> codes.json"
   end
+end
+
+Rake::TestTask.new(:test) do |t|
+  t.libs << 'test'
+  t.pattern = 'test/**/*_test.rb'
 end
