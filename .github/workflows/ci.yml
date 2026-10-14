@@ -59,9 +59,10 @@ jobs:
         env:
           VM_USER: ${{ secrets.VM_USER }}
           VM_HOST: ${{ secrets.VM_HOST }}
+          SHA: ${{ github.sha }}
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VM_USER@$VM_HOST" \
-            "cd ~/url_shortener && git pull && sudo docker compose up -d --build"
+            "cd ~/url_shortener && git fetch origin && git checkout --detach $SHA && sudo docker compose up -d --build"
       - name: Check health
         env:
           VM_USER: ${{ secrets.VM_USER }}
