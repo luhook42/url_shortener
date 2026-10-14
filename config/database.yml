@@ -4,3 +4,9 @@ development:
   host: localhost
   encoding: unicode
   pool: <%= Integer(ENV.fetch('DB_POOL', 16)) %>
+test:
+  adapter: postgresql
+  database: url_shortener_test
+  host: localhost
+  encoding: unicode
+  pool: <%= Integer(ENV.fetch('DB_POOL', 16)) %>
