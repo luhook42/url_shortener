@@ -15,3 +15,24 @@ jobs:
           ruby-version: "4.0.7"
           bundler-cache: true
       - run: bundle exec rake test
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s\n" "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf "%s\n" "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Deploy
+        env:
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VM_USER@$VM_HOST" \
+            "cd ~/url_shortener && git pull && sudo docker compose up -d --build"
