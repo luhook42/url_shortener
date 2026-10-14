@@ -1,0 +1,26 @@
+services:
+  web:
+    build: .
+    ports:
+      - "4567:4567"
+    environment:
+      RACK_ENV: development
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+  redis:
+    image: redis:7
+
+volumes:
+  pgdata:
