@@ -42,6 +42,10 @@ get '/links' do
   Link.order(created_at: :desc).to_json
 end
 
+get '/health' do
+  'ok'
+end
+
 get '/:code' do
   code = params['code']
   cache_key = "link:#{code}"
