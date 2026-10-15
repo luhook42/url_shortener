@@ -32,11 +32,11 @@ jobs:
           SHA: ${{ inputs.sha }}
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VM_USER@$VM_HOST" \
-            "cd ~/url_shortener && git fetch origin && git checkout --detach $SHA && sudo docker compose up -d --build"
+            "deploy $SHA"
       - name: Check health
         env:
           VM_USER: ${{ secrets.VM_USER }}
           VM_HOST: ${{ secrets.VM_HOST }}
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VM_USER@$VM_HOST" \
-            'for i in $(seq 1 15); do curl -fsS http://localhost:4567/health && exit 0; sleep 2; done; exit 1'
+            "health"
