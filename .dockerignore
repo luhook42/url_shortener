@@ -21,3 +21,6 @@ loadtest.js
 Dockerfile
 docker-compose.yml
 .dockerignore
+
+# VM scripts, systemd units, setup docs (not part of the app)
+infra
