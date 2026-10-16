@@ -15,8 +15,3 @@ resource "google_storage_bucket" "backups" {
     }
   }
 }
-
-import {
-  to = google_storage_bucket.backups
-  id = "project-e985c781-9e31-44bf-bee/luhook42-shortener-backups-e985c781"
-}
