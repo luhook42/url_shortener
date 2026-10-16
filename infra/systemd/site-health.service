@@ -1,0 +1,7 @@
+[Unit]
+Description=Check site health and ping the monitor
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/site-health.sh
