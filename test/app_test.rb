@@ -30,7 +30,7 @@ class AppTest < AppTestCase
     assert_equal 'no-cache', last_response.headers['Cache-Control']
   end
 
-  def test_unknown_code_returns_404
+  def test_unknown_code_returns404
     get '/nope123'
 
     assert_equal 404, last_response.status
