@@ -1,0 +1,8 @@
+[Unit]
+Description=Back up the url_shortener Postgres database
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/backup-db.sh
