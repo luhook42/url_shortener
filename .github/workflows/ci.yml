@@ -41,32 +41,19 @@ jobs:
           bundler-cache: true
       - run: bundle exec rake db:create db:migrate
       - run: bundle exec rake test
-  deploy:
+  build:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      IMAGE: us-central1-docker.pkg.dev/project-e985c781-9e31-44bf-bee/shortener/web:${{ github.sha }}
     steps:
-      - name: Set up SSH
-        env:
-          SSH_KEY: ${{ secrets.VM_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}
-        run: |
-          mkdir -p ~/.ssh
-          printf "%s\n" "$SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          printf "%s\n" "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-      - name: Deploy
-        env:
-          VM_USER: ${{ secrets.VM_USER }}
-          VM_HOST: ${{ secrets.VM_HOST }}
-          SHA: ${{ github.sha }}
-        run: |
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VM_USER@$VM_HOST" \
-            "deploy $SHA"
-      - name: Check health
-        env:
-          VM_USER: ${{ secrets.VM_USER }}
-          VM_HOST: ${{ secrets.VM_HOST }}
-        run: |
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VM_USER@$VM_HOST" \
-            "health"
+      - uses: actions/checkout@v4
+      - name: Log in to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/798087845729/locations/global/workloadIdentityPools/github/providers/github
+          service_account:
