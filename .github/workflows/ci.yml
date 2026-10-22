@@ -56,4 +56,40 @@ jobs:
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/798087845729/locations/global/workloadIdentityPools/github/providers/github
-          service_account:
+          service_account: ci-pusher@project-e985c781-9e31-44bf-bee.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Let Docker use the registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+      - name: Build and push
+        run: |
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s\n" "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf "%s\n" "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Deploy
+        env:
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+          SHA: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VM_USER@$VM_HOST" \
+            "deploy $SHA"
+      - name: Check health
+        env:
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VM_USER@$VM_HOST" \
+            "health"
