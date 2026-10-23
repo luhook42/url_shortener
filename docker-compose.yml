@@ -2,6 +2,7 @@ services:
   web:
     restart: unless-stopped
     build: .
+    image: us-central1-docker.pkg.dev/project-e985c781-9e31-44bf-bee/shortener/web:${WEB_TAG:-dev}
     ports:
       - "4567:4567"
     environment:
