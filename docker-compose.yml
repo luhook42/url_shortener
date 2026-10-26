@@ -6,7 +6,7 @@ services:
     ports:
       - "4567:4567"
     environment:
-      RACK_ENV: development
+      RACK_ENV: ${RACK_ENV:-production}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379
     depends_on:
