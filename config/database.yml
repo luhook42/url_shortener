@@ -10,3 +10,7 @@ test:
   host: localhost
   encoding: unicode
   pool: <%= Integer(ENV.fetch('DB_POOL', 16)) %>
+production:
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= Integer(ENV.fetch('DB_POOL', 16)) %>
