@@ -86,7 +86,14 @@ jobs:
           VM_USER: ${{ secrets.VM_USER }}
           VM_HOST: ${{ secrets.VM_HOST }}
           SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
+          latest=$(gh api "repos/$REPO/commits/main" --jq .sha)
+          if [ "$latest" != "$SHA" ]; then
+            echo "Skipping deploy: $SHA is not the head of main ($latest)"
+            exit 0
+          fi
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$VM_USER@$VM_HOST" \
             "deploy $SHA"
       - name: Check health
