@@ -52,7 +52,7 @@ def authorized?
   !expected.empty? && Rack::Utils.secure_compare(given, expected)
 end
 
-before %r{\A/links(?:/|\z)} do
+before %r{/links(?:/.*)?} do
   halt 401, { error: 'unauthorized' }.to_json unless authorized?
 end
 
