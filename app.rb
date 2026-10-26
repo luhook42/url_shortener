@@ -5,6 +5,7 @@ require 'rack/cors'
 require 'redis'
 require 'sinatra'
 require 'sinatra/activerecord'
+require 'uri'
 require_relative 'models/link'
 
 use Rack::Cors do
@@ -36,6 +37,13 @@ end
 
 def generate_code(length = 7)
   Array.new(length) { CODE_CHARS.sample }.join
+end
+
+def valid_http_url?(value)
+  uri = URI.parse(value)
+  uri.is_a?(URI::HTTP) && !uri.host.to_s.empty?
+rescue URI::InvalidURIError
+  false
 end
 
 get '/links' do
@@ -71,6 +79,7 @@ post '/links' do
   content_type :json
   long_url = params['url']
   halt 400, { error: 'missing url' }.to_json unless long_url
+  halt 400, { error: 'invalid url' }.to_json unless valid_http_url?(long_url)
 
   link = nil
   loop do
@@ -92,6 +101,7 @@ put '/links/:code' do
 
   new_url = params['url']
   halt 400, { error: 'missing url' }.to_json unless new_url
+  halt 400, { error: 'invalid url' }.to_json unless valid_http_url?(new_url)
 
   link.update!(long_url: new_url)
   RedisPool.pool.with { |redis| redis.del("link:#{code}") }

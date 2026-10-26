@@ -48,4 +48,35 @@ class AppTest < AppTestCase
     get '/abc1234'
     assert_equal 'https://new.example.com', last_response.headers['Location']
   end
+
+  def test_create_rejects_missing_url
+    post '/links'
+
+    assert_equal 400, last_response.status
+    assert_equal 0, Link.count
+  end
+
+  def test_create_rejects_non_http_urls
+    ['foo', 'javascript:alert(1)', 'ftp://example.com', 'http://'].each do |bad|
+      post '/links', url: bad
+
+      assert_equal 400, last_response.status, "expected 400 for #{bad}"
+    end
+    assert_equal 0, Link.count
+  end
+
+  def test_update_rejects_invalid_url
+    Link.create!(short_code: 'abc1234', long_url: 'https://example.com')
+
+    put '/links/abc1234', url: 'javascript:alert(1)'
+
+    assert_equal 400, last_response.status
+    assert_equal 'https://example.com', Link.find_by(short_code: 'abc1234').long_url
+  end
+
+  def test_update_unknown_code_returns404
+    put '/links/nope123', url: 'https://example.com'
+
+    assert_equal 404, last_response.status
+  end
 end
