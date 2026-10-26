@@ -26,6 +26,14 @@ services:
   redis:
     restart: unless-stopped
     image: redis:7.4.11
+    command:
+      [
+        "redis-server",
+        "--maxmemory",
+        "128mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
 
 volumes:
   pgdata:

@@ -115,4 +115,14 @@ class AppTest < AppTestCase
     get '/health'
     assert_equal 200, last_response.status
   end
+
+  def test_cached_redirect_has_expiry
+    Link.create!(short_code: 'abc1234', long_url: 'https://example.com')
+
+    get '/abc1234'
+
+    ttl = RedisPool.pool.with { |redis| redis.ttl('link:abc1234') }
+    assert_operator ttl, :>, 0
+    assert_operator ttl, :<=, 86_400
+  end
 end

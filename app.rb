@@ -18,6 +18,7 @@ end
 set :database_file, 'config/database.yml'
 
 CODE_CHARS = [*'a'..'z', *'A'..'Z', *'0'..'9'].freeze
+CACHE_TTL = 86_400 # seconds (24 hours)
 
 # Manages pooled Redis connections for the application.
 module RedisPool
@@ -80,7 +81,7 @@ get '/:code' do
     link = Link.find_by(short_code: code)
     halt 404, 'not found' unless link
 
-    RedisPool.pool.with { |redis| redis.set(cache_key, link.long_url) }
+    RedisPool.pool.with { |redis| redis.set(cache_key, link.long_url, ex: CACHE_TTL) }
     redirect link.long_url, 302
   end
 end
