@@ -7,7 +7,9 @@ case "$action" in
     [[ -z "${extra:-}" && "${arg:-}" =~ ^[0-9a-f]{7,40}$ ]] || { echo "invalid sha" >&2; exit 2; }
     git fetch origin
     git checkout --detach "$arg"
-    sudo docker compose up -d --build
+    sha=$(git rev-parse HEAD)
+    sudo env WEB_TAG="$sha" docker compose pull web
+    sudo env WEB_TAG="$sha" docker compose up -d --no-build
     ;;
   health)
     for i in $(seq 1 15); do
