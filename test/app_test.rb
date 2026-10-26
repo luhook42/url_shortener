@@ -79,4 +79,40 @@ class AppTest < AppTestCase
 
     assert_equal 404, last_response.status
   end
+
+  def test_create_requires_token
+    header 'Authorization', ''
+    post '/links', url: 'https://example.com'
+
+    assert_equal 401, last_response.status
+    assert_equal 0, Link.count
+  end
+
+  def test_update_rejects_wrong_token
+    Link.create!(short_code: 'abc1234', long_url: 'https://example.com')
+
+    header 'Authorization', 'Bearer wrong'
+    put '/links/abc1234', url: 'https://evil.example.com'
+
+    assert_equal 401, last_response.status
+    assert_equal 'https://example.com', Link.find_by(short_code: 'abc1234').long_url
+  end
+
+  def test_list_requires_token
+    header 'Authorization', ''
+    get '/links'
+
+    assert_equal 401, last_response.status
+  end
+
+  def test_redirect_and_health_stay_public
+    Link.create!(short_code: 'abc1234', long_url: 'https://example.com')
+
+    header 'Authorization', ''
+    get '/abc1234'
+    assert_equal 302, last_response.status
+
+    get '/health'
+    assert_equal 200, last_response.status
+  end
 end

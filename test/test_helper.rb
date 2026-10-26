@@ -3,6 +3,7 @@
 ENV['APP_ENV'] = 'test'
 ENV['RACK_ENV'] = 'test'
 ENV['REDIS_URL'] = 'redis://localhost:6379/1'
+ENV['API_TOKEN'] = 'test-token'
 
 require 'minitest/autorun'
 require 'rack/test'
@@ -18,5 +19,6 @@ class AppTestCase < Minitest::Test
   def setup
     Link.delete_all
     RedisPool.pool.with(&:flushdb)
+    header 'Authorization', 'Bearer test-token'
   end
 end
