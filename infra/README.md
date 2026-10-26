@@ -4,7 +4,7 @@ Everything that runs on `shortener-vm` but is not part of the app. These files a
 
 ## Layout
 
-- `bin/deploy.sh` -> `/usr/local/bin/deploy.sh`. The only command the restricted deploy key may run. Takes `deploy <sha>` or `health`.
+- `bin/deploy.sh` -> `/usr/local/bin/deploy.sh`. The only command the restricted deploy key may run. Takes `deploy <sha>` or `health`. A deploy fetches from GitHub (and carries on with the commits already on the VM if GitHub is down), pulls the image tagged with that commit from Artifact Registry, checks out the commit, runs `rake db:migrate` in the new image, then restarts `web` without building.
 - `bin/backup-db.sh` -> `/usr/local/bin/backup-db.sh`. Nightly pg_dump, copy to the GCS bucket, prune local backups older than 7 days, then ping the heartbeat monitor.
 - `bin/site-health.sh` -> `/usr/local/bin/site-health.sh`. Checks `localhost:4567/health` and pings the monitor (or its `/fail` URL).
 - `systemd/*.service` and `systemd/*.timer` -> `/etc/systemd/system/`. `backup-db.timer` runs at 03:00 UTC daily. `site-health.timer` runs every 5 minutes.
@@ -19,23 +19,23 @@ Everything that runs on `shortener-vm` but is not part of the app. These files a
 
 1. Copy scripts: `sudo install -m 755 infra/bin/*.sh /usr/local/bin/`
 2. Copy units: `sudo install -m 644 infra/systemd/* /etc/systemd/system/`
-3. Create the two env files described above (root, mode 600).
-4. Enable the timers: `sudo systemctl daemon-reload && sudo systemctl enable --now backup-db.timer site-health.timer`
-5. Add the deploy public key to `~/.ssh/authorized_keys` with these restrictions in front of it: `command="/usr/local/bin/deploy.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty`
-6. Update the `VM_KNOWN_HOSTS` GitHub secret (a new VM has a new host key).
+3. Let Docker pull from Artifact Registry: `sudo gcloud auth configure-docker us-central1-docker.pkg.dev` (use `sudo` because `deploy.sh` runs `sudo docker`). The VM's service account needs `artifactregistry.reader` (Terraform: `registry_access.tf`) and the `devstorage` scope.
+4. Create the two env files described above (root, mode 600).
+5. Enable the timers: `sudo systemctl daemon-reload && sudo systemctl enable --now backup-db.timer site-health.timer`
+6. Add the deploy public key to `~/.ssh/authorized_keys` with these restrictions in front of it: `command="/usr/local/bin/deploy.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty`
+7. Update the `VM_KNOWN_HOSTS` GitHub secret (a new VM has a new host key).
 
-## GCP resources (created by hand for now)
+## How a deploy works
 
-- VM `shortener-vm` (us-central1-a), running as service account `backup-writer` with scope `storage-rw`
-- Reserved static IP `shortener-ip`
-- Bucket `luhook42-shortener-backups-e985c781` with a 30-day delete lifecycle rule. `backup-writer` has `objectCreator` and `objectViewer` on it.
-- Firewall rule `allow-4567-from-my-ip`; port 22 open
-
-These are the resources Terraform will take over later.
+1. A push to `main` runs CI: tests, then a build that pushes `web:<full commit sha>` to Artifact Registry (login through Workload Identity Federation, no stored key).
+2. The deploy job SSHes to the VM with the restricted key and sends `deploy <sha>`.
+3. `deploy.sh` pulls that exact image, runs migrations, and restarts `web`. If the pull fails, nothing changes.
+4. A rollback is the same thing with an older sha (the Rollback workflow). Only commits from `c674070` on work, because older `docker-compose.yml` files have no `image:` line.
+5. If GitHub is down, SSH in and run `SSH_ORIGINAL_COMMAND="deploy <sha>" /usr/local/bin/deploy.sh` for a sha that already has an image. For an emergency new change, build on the VM with `docker compose up -d --build` (no tests, tagged `:dev`).
 
 ## GCP resources (Terraform)
 
-The cloud resources are defined in `terraform/`: the VM, the reserved IP, the backup bucket, the `backup-writer` service account and its bucket permissions, and the port 4567 firewall rule. Change them in code (edit the `.tf` file, run `plan`, then `apply`), not in the console.
+The cloud resources are defined in `terraform/`: the VM, the reserved IP, the backup bucket, the `backup-writer` service account and its bucket permissions, the port 4567 firewall rule, the Artifact Registry repo, the GitHub Actions identity (`ci-pusher` plus Workload Identity Federation), and `backup-writer`'s permission to pull images. Change them in code (edit the `.tf` file, run `plan`, then `apply`), not in the console.
 
 Terraform state lives in the GCS bucket `luhook42-shortener-tfstate-e985c781` (prefix `terraform/state`). That bucket was created by hand as the bootstrap, so it is not in Terraform yet.
 
