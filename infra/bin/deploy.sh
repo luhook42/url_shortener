@@ -6,9 +6,9 @@ case "$action" in
   deploy)
     [[ -z "${extra:-}" && "${arg:-}" =~ ^[0-9a-f]{7,40}$ ]] || { echo "invalid sha" >&2; exit 2; }
     git fetch origin
-    git checkout --detach "$arg"
-    sha=$(git rev-parse HEAD)
+    sha=$(git rev-parse "$arg^{commit}")
     sudo env WEB_TAG="$sha" docker compose pull web
+    git checkout --detach "$sha"
     sudo env WEB_TAG="$sha" docker compose up -d --no-build
     ;;
   health)
