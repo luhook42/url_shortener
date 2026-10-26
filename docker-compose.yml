@@ -9,6 +9,7 @@ services:
       RACK_ENV: ${RACK_ENV:-production}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379
+      API_TOKEN: ${API_TOKEN:?set API_TOKEN in .env}
     depends_on:
       - db
       - redis

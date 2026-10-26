@@ -46,6 +46,16 @@ rescue URI::InvalidURIError
   false
 end
 
+def authorized?
+  expected = ENV['API_TOKEN'].to_s
+  given = request.env['HTTP_AUTHORIZATION'].to_s.delete_prefix('Bearer ')
+  !expected.empty? && Rack::Utils.secure_compare(given, expected)
+end
+
+before %r{\A/links(?:/|\z)} do
+  halt 401, { error: 'unauthorized' }.to_json unless authorized?
+end
+
 get '/links' do
   content_type :json
   Link.order(created_at: :desc).to_json
