@@ -4,13 +4,31 @@ interface ApiError {
   error: string;
 }
 
-const BASE_URL = "http://localhost:4567";
+export const BASE_URL: string =
+  import.meta.env.VITE_API_URL ?? "http://localhost:4567";
+const TOKEN: string | undefined = import.meta.env.VITE_API_TOKEN;
 
-async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, options);
+async function apiRequest<T>(
+  url: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${TOKEN}`,
+    },
+  });
+
   if (!response.ok) {
-    const err: ApiError = await response.json();
-    throw new Error(err.error);
+    let message = `Request failed (${response.status})`;
+    try {
+      const err: ApiError = await response.json();
+      if (err.error) message = err.error;
+    } catch {
+      // body was not JSON, keep the status-based message
+    }
+    throw new Error(message);
   }
   return response.json() as Promise<T>;
 }

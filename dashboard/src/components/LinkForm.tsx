@@ -9,27 +9,31 @@ const LinkForm = ({
   onLinkCreated: (newLink: Link) => void;
 }) => {
   const [url, setUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setError(null);
     try {
       const newLink = await createLink(url);
       onLinkCreated(newLink);
       setUrl("");
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : "Something went wrong");
     }
   };
 
   return (
     <form onSubmit={handleSubmit}>
       <input
-        type="text"
+        type="url"
+        required
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         placeholder="https://example.com"
       />
       <button type="submit">Shorten</button>
+      {error && <div style={{ color: "crimson" }}>{error}</div>}
     </form>
   );
 };
