@@ -50,3 +50,16 @@ Things to know:
 - The VM has `prevent_destroy = true`, so Terraform refuses any plan that would delete or replace it. If a plan shows `-/+` or `forces replacement`, stop and read it before doing anything.
 - SSH keys in the VM's metadata are managed by `gcloud compute ssh` and are ignored by Terraform on purpose.
 - Log in with `gcloud compute ssh luhook42@shortener-vm` (the repo owner), not the default account.
+
+## Keeping the VM disk from filling up
+
+Every deploy pulls a new image tagged with its commit sha (about 900 MB each), so old images pile up. Two things keep this in check:
+
+- `deploy.sh` runs `docker image prune -af --filter "until=72h"` after a successful deploy. It removes images older than 3 days that no container uses, so the last few deploys stay on the VM for a fast rollback. If the cleanup fails it prints a warning and the deploy still counts as successful.
+- The system journal is capped at 200 MB. This is a one-time setting on the VM (it is not deployed from the repo):
+
+        sudo mkdir -p /etc/systemd/journald.conf.d
+        printf '[Journal]\nSystemMaxUse=200M\n' | sudo tee /etc/systemd/journald.conf.d/size.conf
+        sudo systemctl restart systemd-journald
+
+Check disk use with `df -h /` and `docker system df`.

@@ -11,6 +11,7 @@ case "$action" in
     git checkout --detach "$sha"
     sudo env WEB_TAG="$sha" docker compose run --rm -T web bundle exec rake db:migrate
     sudo env WEB_TAG="$sha" docker compose up -d --no-build
+    sudo docker image prune -af --filter "until=72h" || echo "image cleanup failed" >&2
     ;;
   health)
     for i in $(seq 1 15); do
