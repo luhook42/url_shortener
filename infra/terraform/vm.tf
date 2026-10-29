@@ -2,6 +2,7 @@ resource "google_compute_instance" "shortener_vm" {
   name                       = "shortener-vm"
   machine_type               = "e2-medium"
   zone                       = "us-central1-a"
+  allow_stopping_for_update  = true
   key_revocation_action_type = "NONE"
 
   metadata = {
@@ -42,8 +43,12 @@ resource "google_compute_instance" "shortener_vm" {
   }
 
   service_account {
-    email  = google_service_account.backup_writer.email
-    scopes = ["https://www.googleapis.com/auth/devstorage.read_write"]
+    email = google_service_account.backup_writer.email
+    scopes = [
+      "https://www.googleapis.com/auth/devstorage.read_write",
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring.write",
+    ]
   }
 
   shielded_instance_config {
