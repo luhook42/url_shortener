@@ -11,7 +11,7 @@ services:
     build: .
     image: us-central1-docker.pkg.dev/project-e985c781-9e31-44bf-bee/shortener/web:${WEB_TAG:-dev}
     ports:
-      - "4567:4567"
+      - "127.0.0.1:4567:4567"
     environment:
       RACK_ENV: ${RACK_ENV:-production}
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
