@@ -1,7 +1,7 @@
 resource "google_compute_instance" "shortener_vm" {
-  name         = "shortener-vm"
-  machine_type = "e2-medium"
-  zone         = "us-central1-a"
+  name                       = "shortener-vm"
+  machine_type               = "e2-medium"
+  zone                       = "us-central1-a"
   key_revocation_action_type = "NONE"
 
   metadata = {
