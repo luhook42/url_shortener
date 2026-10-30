@@ -4,7 +4,7 @@ Everything that runs on `shortener-vm` but is not part of the app. These files a
 
 ## Layout
 
-- `bin/deploy.sh` -> `/usr/local/bin/deploy.sh`. The only command the restricted deploy key may run. Takes `deploy <sha>` or `health`. A deploy fetches from GitHub (and carries on with the commits already on the VM if GitHub is down), pulls the image tagged with that commit from Artifact Registry, checks out the commit, runs `rake db:migrate` in the new image, then restarts `web` without building. If the commit changes `Caddyfile`, it also recreates `caddy` so the new config is loaded.
+- `bin/deploy.sh` -> `/usr/local/bin/deploy.sh`. The only command the restricted deploy key may run. Takes `deploy <sha>` or `health`. A deploy fetches from GitHub (and carries on with the commits already on the VM if GitHub is down), pulls the image tagged with that commit from Artifact Registry, runs `rake db:migrate` in the new image, checks out the commit, then restarts `web` without building. If the commit changes `Caddyfile`, it also recreates `caddy` so the new config is loaded.
 - `bin/backup-db.sh` -> `/usr/local/bin/backup-db.sh`. Nightly pg_dump, copy to the GCS bucket, prune local backups older than 7 days, then ping the heartbeat monitor.
 - `bin/site-health.sh` -> `/usr/local/bin/site-health.sh`. Checks `localhost:4567/health` and pings the monitor (or its `/fail` URL).
 - `systemd/*.service` and `systemd/*.timer` -> `/etc/systemd/system/`. `backup-db.timer` runs at 03:00 UTC daily. `site-health.timer` runs every 5 minutes.
@@ -29,7 +29,7 @@ Everything that runs on `shortener-vm` but is not part of the app. These files a
 
 1. A push to `main` runs CI: tests, then a build that pushes `web:<full commit sha>` to Artifact Registry (login through Workload Identity Federation, no stored key).
 2. The deploy job SSHes to the VM with the restricted key and sends `deploy <sha>`.
-3. `deploy.sh` pulls that exact image, runs migrations, and restarts `web`. If the pull fails, nothing changes.
+3. `deploy.sh` pulls that exact image, runs migrations, checks out the commit, and restarts `web`. If the pull or a migration fails, the checkout and running containers stay on the old commit.
 4. A rollback is the same thing with an older sha (the Rollback workflow). Only commits from `c674070` on work, because older `docker-compose.yml` files have no `image:` line.
 5. If GitHub is down, SSH in and run `SSH_ORIGINAL_COMMAND="deploy <sha>" /usr/local/bin/deploy.sh` for a sha that already has an image. For an emergency new change, build on the VM with `docker compose up -d --build` (no tests, tagged `:dev`).
 

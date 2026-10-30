@@ -9,8 +9,10 @@ case "$action" in
     sha=$(git rev-parse "$arg^{commit}")
     sudo env WEB_TAG="$sha" docker compose pull web
     previous=$(git rev-parse HEAD)
-    git checkout --detach "$sha"
+    # Migrate from the new image before touching the working tree, so a failed
+    # migration leaves the checkout matching the containers that are running.
     sudo env WEB_TAG="$sha" docker compose run --rm -T web bundle exec rake db:migrate
+    git checkout --detach "$sha"
     sudo env WEB_TAG="$sha" docker compose up -d --no-build
     # Caddyfile is a single-file bind mount. git checkout replaces the file, so
     # the running container keeps the old copy until it is recreated.
