@@ -98,7 +98,7 @@ get '/:code' do
 
     # nx: never overwrite a value written by PUT /links/:code. Without it, a
     # request that read the old row could re-cache the old URL after an update.
-    RedisPool.pool.with { |redis| redis.set(cache_key, link.long_url, ex: CACHE_TTL, nx: true) }
+    RedisPool.safely { |redis| redis.set(cache_key, link.long_url, ex: CACHE_TTL, nx: true) }
     redirect link.long_url, 302
   end
 end
