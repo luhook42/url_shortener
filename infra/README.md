@@ -35,14 +35,14 @@ Everything that runs on `shortener-vm` but is not part of the app. These files a
 
 ## GCP resources (Terraform)
 
-The cloud resources are defined in `terraform/`: the VM, the reserved IP, the backup bucket, the `backup-writer` service account and its bucket permissions, the port 4567 firewall rule, the Artifact Registry repo, the GitHub Actions identity (`ci-pusher` plus Workload Identity Federation), and `backup-writer`'s permission to pull images. Change them in code (edit the `.tf` file, run `plan`, then `apply`), not in the console.
+The cloud resources are defined in `terraform/`: the VM, the reserved IP, the backup bucket, the `backup-writer` service account and its bucket permissions, the port 80/443 firewall rule (`web` itself listens only on 127.0.0.1:4567, behind Caddy), the Artifact Registry repo, the GitHub Actions identity (`ci-pusher` plus Workload Identity Federation), and `backup-writer`'s permission to pull images. Change them in code (edit the `.tf` file, run `plan`, then `apply`), not in the console.
 
 Terraform state lives in the GCS bucket `luhook42-shortener-tfstate-e985c781` (prefix `terraform/state`). That bucket was created by hand as the bootstrap, so it is not in Terraform yet.
 
 First-time setup on a new machine:
 
 1. Install Terraform and run `gcloud auth application-default login`.
-2. Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars` and put your current public IP in it as a /32 (this file is git-ignored).
+2. Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars` and set `alert_email` to the address that should receive monitoring alerts (this file is git-ignored).
 3. Run `terraform -chdir=infra/terraform init`, then `plan`. It should say `No changes`.
 
 Things to know:
