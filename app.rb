@@ -28,11 +28,10 @@ module RedisPool
     end
   end
 
+  # Drops the current pool; the next call to .pool builds a fresh one.
   def self.reset!
     @pool&.shutdown(&:close)
-    @pool = ConnectionPool.new(size: 16, timeout: 5) do
-      Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379'))
-    end
+    @pool = nil
   end
 end
 
