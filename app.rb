@@ -70,8 +70,15 @@ get '/links' do
   Link.order(created_at: :desc).to_json
 end
 
+# Used by the deploy gate, site-health.sh and the GCP uptime check, so it must
+# fail when the app cannot serve redirects, not just when Puma is down.
 get '/health' do
+  ActiveRecord::Base.connection_pool.with_connection { |conn| conn.select_value('SELECT 1') }
+  RedisPool.pool.with(&:ping)
   'ok'
+rescue StandardError => e
+  warn "health check failed: #{e.class}: #{e.message}"
+  halt 503, 'unhealthy'
 end
 
 get '/:code' do
