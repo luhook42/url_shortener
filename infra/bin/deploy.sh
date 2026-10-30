@@ -8,8 +8,10 @@ case "$action" in
     git fetch origin || echo "git fetch failed, using commits already on the VM" >&2
     sha=$(git rev-parse "$arg^{commit}")
     sudo env WEB_TAG="$sha" docker compose pull web
-    git checkout --detach "$sha"
+    # Migrate from the new image before touching the working tree, so a failed
+    # migration leaves the checkout matching the containers that are running.
     sudo env WEB_TAG="$sha" docker compose run --rm -T web bundle exec rake db:migrate
+    git checkout --detach "$sha"
     sudo env WEB_TAG="$sha" docker compose up -d --no-build
     sudo docker image prune -af --filter "until=72h" || echo "image cleanup failed" >&2
     ;;
