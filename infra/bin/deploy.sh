@@ -8,11 +8,17 @@ case "$action" in
     git fetch origin || echo "git fetch failed, using commits already on the VM" >&2
     sha=$(git rev-parse "$arg^{commit}")
     sudo env WEB_TAG="$sha" docker compose pull web
+    previous=$(git rev-parse HEAD)
     # Migrate from the new image before touching the working tree, so a failed
     # migration leaves the checkout matching the containers that are running.
     sudo env WEB_TAG="$sha" docker compose run --rm -T web bundle exec rake db:migrate
     git checkout --detach "$sha"
     sudo env WEB_TAG="$sha" docker compose up -d --no-build
+    # Caddyfile is a single-file bind mount. git checkout replaces the file, so
+    # the running container keeps the old copy until it is recreated.
+    if ! git diff --quiet "$previous" "$sha" -- Caddyfile; then
+      sudo env WEB_TAG="$sha" docker compose up -d --no-build --force-recreate caddy
+    fi
     sudo docker image prune -af --filter "until=72h" || echo "image cleanup failed" >&2
     ;;
   health)

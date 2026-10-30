@@ -28,11 +28,19 @@ module RedisPool
     end
   end
 
+  # Runs the block with a pooled connection. Returns nil instead of raising
+  # when Redis is unreachable, so callers can fall back to Postgres.
+  def self.safely(&block)
+    pool.with(&block)
+  rescue Redis::BaseError, ConnectionPool::TimeoutError => e
+    warn "redis unavailable: #{e.class}: #{e.message}"
+    nil
+  end
+
+  # Drops the current pool; the next call to .pool builds a fresh one.
   def self.reset!
     @pool&.shutdown(&:close)
-    @pool = ConnectionPool.new(size: 16, timeout: 5) do
-      Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379'))
-    end
+    @pool = nil
   end
 end
 
@@ -62,8 +70,15 @@ get '/links' do
   Link.order(created_at: :desc).to_json
 end
 
+# Used by the deploy gate, site-health.sh and the GCP uptime check, so it must
+# fail when the app cannot serve redirects, not just when Puma is down.
 get '/health' do
+  ActiveRecord::Base.connection_pool.with_connection { |conn| conn.select_value('SELECT 1') }
+  RedisPool.pool.with(&:ping)
   'ok'
+rescue StandardError => e
+  warn "health check failed: #{e.class}: #{e.message}"
+  halt 503, 'unhealthy'
 end
 
 get '/:code' do
@@ -72,7 +87,7 @@ get '/:code' do
 
   headers['Cache-Control'] = 'no-cache'
 
-  cached_url = RedisPool.pool.with { |redis| redis.get(cache_key) }
+  cached_url = RedisPool.safely { |redis| redis.get(cache_key) }
   if cached_url
     puts "cache HIT for #{code}"
     redirect cached_url, 302
@@ -81,7 +96,9 @@ get '/:code' do
     link = Link.find_by(short_code: code)
     halt 404, 'not found' unless link
 
-    RedisPool.pool.with { |redis| redis.set(cache_key, link.long_url, ex: CACHE_TTL) }
+    # nx: never overwrite a value written by PUT /links/:code. Without it, a
+    # request that read the old row could re-cache the old URL after an update.
+    RedisPool.safely { |redis| redis.set(cache_key, link.long_url, ex: CACHE_TTL, nx: true) }
     redirect link.long_url, 302
   end
 end
@@ -115,7 +132,9 @@ put '/links/:code' do
   halt 400, { error: 'invalid url' }.to_json unless valid_http_url?(new_url)
 
   link.update!(long_url: new_url)
-  RedisPool.pool.with { |redis| redis.del("link:#{code}") }
+  # Write the new URL instead of deleting the key, so a concurrent cache miss
+  # (which uses nx: true) cannot put the old URL back.
+  RedisPool.pool.with { |redis| redis.set("link:#{code}", new_url, ex: CACHE_TTL) }
 
   link.to_json
 end
