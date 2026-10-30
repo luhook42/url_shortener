@@ -89,7 +89,9 @@ get '/:code' do
     link = Link.find_by(short_code: code)
     halt 404, 'not found' unless link
 
-    RedisPool.safely { |redis| redis.set(cache_key, link.long_url, ex: CACHE_TTL) }
+    # nx: never overwrite a value written by PUT /links/:code. Without it, a
+    # request that read the old row could re-cache the old URL after an update.
+    RedisPool.pool.with { |redis| redis.set(cache_key, link.long_url, ex: CACHE_TTL, nx: true) }
     redirect link.long_url, 302
   end
 end
@@ -123,7 +125,9 @@ put '/links/:code' do
   halt 400, { error: 'invalid url' }.to_json unless valid_http_url?(new_url)
 
   link.update!(long_url: new_url)
-  RedisPool.pool.with { |redis| redis.del("link:#{code}") }
+  # Write the new URL instead of deleting the key, so a concurrent cache miss
+  # (which uses nx: true) cannot put the old URL back.
+  RedisPool.pool.with { |redis| redis.set("link:#{code}", new_url, ex: CACHE_TTL) }
 
   link.to_json
 end
