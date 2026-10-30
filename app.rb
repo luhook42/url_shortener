@@ -28,11 +28,19 @@ module RedisPool
     end
   end
 
+  # Runs the block with a pooled connection. Returns nil instead of raising
+  # when Redis is unreachable, so callers can fall back to Postgres.
+  def self.safely(&block)
+    pool.with(&block)
+  rescue Redis::BaseError, ConnectionPool::TimeoutError => e
+    warn "redis unavailable: #{e.class}: #{e.message}"
+    nil
+  end
+
+  # Drops the current pool; the next call to .pool builds a fresh one.
   def self.reset!
     @pool&.shutdown(&:close)
-    @pool = ConnectionPool.new(size: 16, timeout: 5) do
-      Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379'))
-    end
+    @pool = nil
   end
 end
 
@@ -72,7 +80,7 @@ get '/:code' do
 
   headers['Cache-Control'] = 'no-cache'
 
-  cached_url = RedisPool.pool.with { |redis| redis.get(cache_key) }
+  cached_url = RedisPool.safely { |redis| redis.get(cache_key) }
   if cached_url
     puts "cache HIT for #{code}"
     redirect cached_url, 302
