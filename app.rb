@@ -87,6 +87,10 @@ get '/:code' do
 
   headers['Cache-Control'] = 'no-cache'
 
+  # Atomic increment on every redirect, cache hit or miss. Unknown codes match
+  # no rows, so this is a no-op for them.
+  Link.where(short_code: code).update_all('click_count = click_count + 1')
+
   cached_url = RedisPool.safely { |redis| redis.get(cache_key) }
   if cached_url
     puts "cache HIT for #{code}"
