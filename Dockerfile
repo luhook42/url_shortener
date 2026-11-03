@@ -14,7 +14,11 @@ ENV BUNDLE_WITHOUT=development:test
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libpq5 \
   && rm -rf /var/lib/apt/lists/*
+# Run as an ordinary user instead of root.
+RUN groupadd --system --gid 1000 app \
+  && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
 WORKDIR /app
 COPY --from=build /usr/local/bundle /usr/local/bundle
-COPY . .
+COPY --chown=app:app . .
+USER app
 CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]
