@@ -23,9 +23,11 @@ export default function () {
   const isWrite = Math.random() < 0.001; // roughly 1 write per 1000 requests
 
   if (isWrite) {
-    http.post("http://localhost:4567/links", {
-      url: "https://example.com/new-" + Date.now(),
-    });
+    http.post(
+      "http://localhost:4567/links",
+      { url: "https://example.com/new-" + Date.now() },
+      { headers: { Authorization: `Bearer ${__ENV.API_TOKEN}` } },
+    );
   } else {
     const code = weightedCodes[Math.floor(Math.random() * weightedCodes.length)];
     http.get(`http://localhost:4567/${code}`, { redirects: 0 });
