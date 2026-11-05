@@ -1,13 +1,25 @@
 # infra/
 
-Everything that runs on `shortener-vm` but is not part of the app. These files are copies of what is on the VM. The VM is the source of truth until we add an install script, so if you change a file there, copy it back here.
+Everything that runs on `shortener-vm` but is not part of the app. The repo is the source of truth: change a file here, merge it, then install it with `bin/sync-vm.sh apply`. Don't edit these files on the VM directly; `bin/sync-vm.sh check` shows any drift.
 
 ## Layout
 
-- `bin/deploy.sh` -> `/usr/local/bin/deploy.sh`. The only command the restricted deploy key may run. Takes `deploy <sha>` or `health`. A deploy fetches from GitHub (and carries on with the commits already on the VM if GitHub is down), pulls the image tagged with that commit from Artifact Registry, runs `rake db:migrate` in the new image, checks out the commit, then restarts `web` without building. If the commit changes `Caddyfile`, it also recreates `caddy` so the new config is loaded.
-- `bin/backup-db.sh` -> `/usr/local/bin/backup-db.sh`. Nightly pg_dump, copy to the GCS bucket, prune local backups older than 7 days, then ping the heartbeat monitor.
-- `bin/site-health.sh` -> `/usr/local/bin/site-health.sh`. Checks `localhost:4567/health` and pings the monitor (or its `/fail` URL).
-- `systemd/*.service` and `systemd/*.timer` -> `/etc/systemd/system/`. `backup-db.timer` runs at 03:00 UTC daily. `site-health.timer` runs every 5 minutes.
+Files under `vm/` sit at the same path they have on the VM: `vm/usr/local/bin/backup-db.sh` is `/usr/local/bin/backup-db.sh`.
+
+- `vm/usr/local/bin/deploy.sh`: the only command the restricted deploy key may run. Takes `deploy <sha>` or `health`. A deploy fetches from GitHub (and carries on with the commits already on the VM if GitHub is down), pulls the image tagged with that commit from Artifact Registry, runs `rake db:migrate` in the new image, checks out the commit, then restarts `web` without building. If the commit changes `Caddyfile`, it also recreates `caddy` so the new config is loaded.
+- `vm/usr/local/bin/backup-db.sh`: nightly pg_dump, copy to the GCS bucket, prune local backups older than 7 days, then ping the heartbeat monitor.
+- `vm/usr/local/bin/site-health.sh`: checks `localhost:4567/health` and pings the monitor (or its `/fail` URL).
+- `vm/etc/systemd/system/`: `backup-db.service` and `.timer` (03:00 UTC daily), `site-health.service` and `.timer` (every 5 minutes).
+- `vm/etc/systemd/journald.conf.d/size.conf`: caps the system journal at 200 MB.
+- `vm/etc/google-cloud-ops-agent/config.yaml`: adds `/var/log/auth.log` (SSH logins, sudo) to the logs sent to Cloud Logging.
+- `bin/sync-vm.sh` (run on your Mac) and `bin/vm-apply.sh` (runs on the VM): compare and install the files above.
+
+## Installing and checking server files
+
+- `infra/bin/sync-vm.sh check` (from your Mac) shows what differs between the repo and the VM, and changes nothing. Run it monthly to catch drift.
+- `infra/bin/sync-vm.sh apply` saves each changed file to `/var/backups/vm-config/<time>/` on the VM, installs the repo version owned by root (755 in `bin/`, 644 elsewhere), then reloads systemd or restarts journald and the Ops Agent if their files changed.
+- Change the repo first and merge, then run `apply` from `main`.
+- Only `/etc` and `/usr/local/bin` are allowed. Secrets are never copied.
 
 ## Not in this repo (secrets)
 
@@ -17,13 +29,12 @@ Everything that runs on `shortener-vm` but is not part of the app. These files a
 
 ## Setting up a fresh VM
 
-1. Copy scripts: `sudo install -m 755 infra/bin/*.sh /usr/local/bin/`
-2. Copy units: `sudo install -m 644 infra/systemd/* /etc/systemd/system/`
-3. Let Docker pull from Artifact Registry: `sudo gcloud auth configure-docker us-central1-docker.pkg.dev` (use `sudo` because `deploy.sh` runs `sudo docker`). The VM's service account needs `artifactregistry.reader` (Terraform: `registry_access.tf`) and the `devstorage` scope.
-4. Create the two env files described above (root, mode 600).
-5. Enable the timers: `sudo systemctl daemon-reload && sudo systemctl enable --now backup-db.timer site-health.timer`
-6. Add the deploy public key to `~/.ssh/authorized_keys` with these restrictions in front of it: `command="/usr/local/bin/deploy.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty`
-7. Update the `VM_KNOWN_HOSTS` GitHub secret (a new VM has a new host key).
+1. Install the server files from your Mac: `infra/bin/sync-vm.sh apply`.
+2. Let Docker pull from Artifact Registry: `sudo gcloud auth configure-docker us-central1-docker.pkg.dev` (use `sudo` because `deploy.sh` runs `sudo docker`). The VM's service account needs `artifactregistry.reader` (Terraform: `registry_access.tf`) and the `devstorage` scope.
+3. Create the two env files described above (root, mode 600).
+4. Enable the timers: `sudo systemctl enable --now backup-db.timer site-health.timer`
+5. Add the deploy public key to `~/.ssh/authorized_keys` with these restrictions in front of it: `command="/usr/local/bin/deploy.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty`
+6. Update the `VM_KNOWN_HOSTS` GitHub secret (a new VM has a new host key).
 
 ## How a deploy works
 
@@ -56,10 +67,6 @@ Things to know:
 Every deploy pulls a new image tagged with its commit sha (about 900 MB each), so old images pile up. Two things keep this in check:
 
 - `deploy.sh` runs `docker image prune -af --filter "until=72h"` after a successful deploy. It removes images older than 3 days that no container uses, so the last few deploys stay on the VM for a fast rollback. If the cleanup fails it prints a warning and the deploy still counts as successful.
-- The system journal is capped at 200 MB. This is a one-time setting on the VM (it is not deployed from the repo):
-
-        sudo mkdir -p /etc/systemd/journald.conf.d
-        printf '[Journal]\nSystemMaxUse=200M\n' | sudo tee /etc/systemd/journald.conf.d/size.conf
-        sudo systemctl restart systemd-journald
+- The system journal is capped at 200 MB by `vm/etc/systemd/journald.conf.d/size.conf`.
 
 Check disk use with `df -h /` and `docker system df`.

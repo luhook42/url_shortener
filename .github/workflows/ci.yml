@@ -24,7 +24,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       redis:
-        image: redis:7.4.11
+        image: redis:8.10.2
         ports:
           - 6379:6379
         options: >-
@@ -37,7 +37,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/url_shortener_test
       REDIS_URL: redis://localhost:6379/1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "4.0.7"
@@ -50,7 +50,7 @@ jobs:
       run:
         working-directory: dashboard
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -69,13 +69,13 @@ jobs:
     env:
       IMAGE: us-central1-docker.pkg.dev/project-e985c781-9e31-44bf-bee/shortener/web:${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Log in to Google Cloud
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/798087845729/locations/global/workloadIdentityPools/github/providers/github
           service_account: ci-pusher@project-e985c781-9e31-44bf-bee.iam.gserviceaccount.com
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
       - name: Let Docker use the registry
         run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
       - name: Build and push
