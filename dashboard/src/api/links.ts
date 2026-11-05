@@ -13,7 +13,9 @@ async function apiRequest<T>(
   options: RequestInit = {},
 ): Promise<T> {
   if (!TOKEN) {
-    throw new Error("VITE_API_TOKEN is not set. Add it to dashboard/.env.local.");
+    throw new Error(
+      "VITE_API_TOKEN is not set. Add it to dashboard/.env.local.",
+    );
   }
   const response = await fetch(url, {
     ...options,
