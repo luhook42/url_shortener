@@ -34,7 +34,7 @@ services:
   redis:
     restart: unless-stopped
     logging: *default-logging
-    image: redis:7.4.11
+    image: redis:8.10.2
     command:
       [
         "redis-server",
