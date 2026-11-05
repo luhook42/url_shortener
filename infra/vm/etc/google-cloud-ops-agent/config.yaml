@@ -1,0 +1,12 @@
+# Ops Agent settings. Installed by infra/bin/sync-vm.sh.
+# Adds /var/log/auth.log (SSH logins, sudo) to the built-in syslog collection.
+logging:
+  receivers:
+    auth_log:
+      type: files
+      include_paths:
+        - /var/log/auth.log
+  service:
+    pipelines:
+      auth_pipeline:
+        receivers: [auth_log]
