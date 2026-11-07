@@ -7,13 +7,16 @@ import { getLinks } from "./api/links";
 
 function App() {
   const [links, setLinks] = useState<Link[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchLinks = async () => {
     try {
       const respData = await getLinks();
       setLinks(respData);
+      setLoadError(null);
     } catch (err) {
       console.error(err);
+      setLoadError(err instanceof Error ? err.message : "Failed to load links");
     }
   };
 
@@ -33,6 +36,11 @@ function App() {
   return (
     <div>
       <LinkForm onLinkCreated={handleLinkCreated} />
+      {loadError && (
+        <div style={{ color: "crimson" }}>
+          Could not load links: {loadError}
+        </div>
+      )}
       <LinkList links={links} onLinkUpdated={handleLinkUpdated} />
     </div>
   );

@@ -44,6 +44,7 @@ const LinkRow = ({ link, onLinkUpdated }: Props) => {
         <form onSubmit={handleSubmit} style={{ display: "inline" }}>
           <input
             type="url"
+            required
             value={draftUrl}
             onChange={(e) => setDraftUrl(e.target.value)}
           />
