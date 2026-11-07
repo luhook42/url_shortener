@@ -4,29 +4,29 @@ A small URL shortener: a Sinatra API backed by Postgres, with Redis caching the 
 
 ## Layout
 
-| Path | What it is |
-| --- | --- |
-| `app.rb`, `models/`, `config.ru` | The Sinatra app and the `Link` model |
-| `config/` | Database settings and Puma settings (2 workers, 5–16 threads, port 4567) |
-| `db/` | ActiveRecord migrations and schema |
-| `test/` | Minitest + Rack::Test tests |
-| `dashboard/` | React + TypeScript + Vite front end |
-| `Dockerfile` | Two-stage production image that runs Puma as a non-root `app` user |
-| `docker-compose.yml` | The `web`, `db` (Postgres 18), `redis` (Redis 7) and `caddy` services |
-| `Caddyfile` | Caddy config: serves `luke-links.com` over HTTPS and proxies to `web:4567` |
-| `infra/` | Terraform for GCP, the VM's deploy/backup/health scripts, systemd timers (see [`infra/README.md`](infra/README.md)) |
-| `.github/workflows/` | CI (test, dashboard, build, deploy) and a manual rollback |
-| `loadtest.js` | k6 load test |
+| Path                             | What it is                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `app.rb`, `models/`, `config.ru` | The Sinatra app and the `Link` model                                                                                |
+| `config/`                        | Database settings and Puma settings (2 workers, 5–16 threads, port 4567)                                            |
+| `db/`                            | ActiveRecord migrations and schema                                                                                  |
+| `test/`                          | Minitest + Rack::Test tests                                                                                         |
+| `dashboard/`                     | React + TypeScript + Vite front end                                                                                 |
+| `Dockerfile`                     | Two-stage production image that runs Puma as a non-root `app` user                                                  |
+| `docker-compose.yml`             | The `web`, `db` (Postgres 18), `redis` (Redis 7) and `caddy` services                                               |
+| `Caddyfile`                      | Caddy config: serves `luke-links.com` over HTTPS and proxies to `web:4567`                                          |
+| `infra/`                         | Terraform for GCP, the VM's deploy/backup/health scripts, systemd timers (see [`infra/README.md`](infra/README.md)) |
+| `.github/workflows/`             | CI (test, dashboard, build, deploy) and a manual rollback                                                           |
+| `loadtest.js`                    | k6 load test                                                                                                        |
 
 ## API
 
-| Method | Path | Auth | What it does |
-| --- | --- | --- | --- |
-| `GET` | `/health` | no | `ok` if Postgres and Redis both answer, otherwise `503 unhealthy` |
-| `GET` | `/links` | yes | All links as JSON, newest first |
-| `POST` | `/links` | yes | Creates a link from form param `url`, returns `201` with the link |
-| `PUT` | `/links/:code` | yes | Changes the link's `url` and writes the new URL to the cache |
-| `GET` | `/:code` | no | `302` redirect to the long URL, or `404` |
+| Method | Path           | Auth | What it does                                                      |
+| ------ | -------------- | ---- | ----------------------------------------------------------------- |
+| `GET`  | `/health`      | no   | `ok` if Postgres and Redis both answer, otherwise `503 unhealthy` |
+| `GET`  | `/links`       | yes  | All links as JSON, newest first                                   |
+| `POST` | `/links`       | yes  | Creates a link from form param `url`, returns `201` with the link |
+| `PUT`  | `/links/:code` | yes  | Changes the link's `url` and writes the new URL to the cache      |
+| `GET`  | `/:code`       | no   | `302` redirect to the long URL, or `404`                          |
 
 The `/links` routes need `Authorization: Bearer <API_TOKEN>` and return `401` without it. `POST` and `PUT` return `400` if `url` is missing or isn't an http(s) URL with a host.
 
@@ -51,7 +51,7 @@ The API is then on http://localhost:4567. The `caddy` service starts too and wil
 
 ### Without Docker
 
-Needs Ruby 4.0.7, plus Postgres and Redis running on localhost.
+Needs Ruby 4.0.8, plus Postgres and Redis running on localhost.
 
 ```sh
 bundle install
