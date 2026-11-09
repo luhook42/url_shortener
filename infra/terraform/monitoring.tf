@@ -91,3 +91,45 @@ resource "google_monitoring_alert_policy" "site_down" {
     content   = "https://luke-links.com/health is failing. Check: `curl -i https://luke-links.com/health`, then on the VM `sudo docker ps` and `sudo docker compose logs --tail 50 caddy web`. If the VM is stopped: `gcloud compute instances start shortener-vm --zone us-central1-a`."
   }
 }
+
+locals {
+  # Keys allowed to log in to the VM. Fingerprints are hashes of public keys, so they are safe to commit.
+  # Update this list when a key is added or rotated.
+  known_ssh_keys = {
+    ci_deploy_v2 = "SHA256:C0ZNYKZT93IS6Zyrfaj+Sc5VTyjmDXVrJSMDqj6bOZE"
+    luke_mac     = "SHA256:ge108fA4YoiXKekIwlzxev8fIATJilLN3EOertWsRbI"
+  }
+}
+
+resource "google_monitoring_alert_policy" "unknown_ssh_key" {
+  display_name = "SSH login with an unknown key"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Accepted publickey not from CI or Luke's Mac"
+    condition_matched_log {
+      filter = join(" AND ", concat([
+        "logName=\"projects/project-e985c781-9e31-44bf-bee/logs/auth_log\"",
+        "jsonPayload.message:\"Accepted publickey\"",
+        "NOT jsonPayload.message:\"COMMAND=\"",
+      ], [for fp in values(local.known_ssh_keys) : "NOT jsonPayload.message:\"${fp}\""]))
+      label_extractors = {
+        source_ip = "REGEXP_EXTRACT(jsonPayload.message, \"from ([0-9.]+)\")"
+      }
+    }
+  }
+
+  alert_strategy {
+    notification_rate_limit {
+      period = "300s"
+    }
+    auto_close = "1800s"
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email.id]
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Someone logged in to shortener-vm with a key that is not the CI deploy key or Luke's Mac key. If you used the console SSH button, this was you. Otherwise, on the VM: list logins with `sudo zgrep -h 'Accepted publickey' /var/log/auth.log*`, list allowed keys with `ssh-keygen -lf ~/.ssh/authorized_keys`, and see what they ran with `sudo grep COMMAND= /var/log/auth.log`."
+  }
+}
