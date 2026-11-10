@@ -133,3 +133,30 @@ resource "google_monitoring_alert_policy" "unknown_ssh_key" {
     content   = "Someone logged in to shortener-vm with a key that is not the CI deploy key or Luke's Mac key. If you used the console SSH button, this was you. Otherwise, on the VM: list logins with `sudo zgrep -h 'Accepted publickey' /var/log/auth.log*`, list allowed keys with `ssh-keygen -lf ~/.ssh/authorized_keys`, and see what they ran with `sudo grep COMMAND= /var/log/auth.log`."
   }
 }
+
+# Fires when the Ops Agent stops sending metrics (found by the SSH-alone exam on Nov 10 2026:
+# the agent was stopped and nothing alerted). Also fires if the VM itself is stopped.
+resource "google_monitoring_alert_policy" "agent_silent" {
+  display_name = "Ops Agent stopped reporting"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "No disk metric from the VM for 10 minutes"
+    condition_absent {
+      filter   = "resource.type = \"gce_instance\" AND metric.type = \"agent.googleapis.com/disk/percent_used\" AND metric.labels.device = \"/dev/sda1\" AND metric.labels.state = \"used\""
+      duration = "600s"
+
+      aggregations {
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email.id]
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "shortener-vm stopped sending agent metrics. Check `gcloud compute instances list` (is the VM running?). On the VM: `systemctl is-active google-cloud-ops-agent` and `sudo journalctl -u google-cloud-ops-agent -n 20`. Fix: `sudo systemctl start google-cloud-ops-agent`. While the agent is down, logs and the disk alert are blind."
+  }
+}
