@@ -1,0 +1,70 @@
+# The web app: 2 copies, same image and settings as the "web" service in docker-compose.yml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: shortener-web:dev
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          env:
+            - name: RACK_ENV
+              value: production
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgres://postgres:$(POSTGRES_PASSWORD)@db:5432/url_shortener
+            - name: REDIS_URL
+              value: redis://redis:6379
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-secrets
+                  key: API_TOKEN
+          ports:
+            - containerPort: 4567
+          # Only send traffic to this Pod once /health answers.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4567
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          # Restart the container if /health stops answering for 30 seconds.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4567
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 4567
