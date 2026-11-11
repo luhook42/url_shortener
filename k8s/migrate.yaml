@@ -1,0 +1,32 @@
+# Runs the database migrations once, then stops. Same command deploy.sh runs on the VM.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: shortener-web:dev
+          imagePullPolicy: IfNotPresent
+          command: ["bundle", "exec", "rake", "db:migrate"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          env:
+            - name: RACK_ENV
+              value: production
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgres://postgres:$(POSTGRES_PASSWORD)@db:5432/url_shortener
