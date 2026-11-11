@@ -14,6 +14,7 @@ A small URL shortener: a Sinatra API backed by Postgres, with Redis caching the 
 | `Dockerfile`                     | Two-stage production image that runs Puma as a non-root `app` user                                                  |
 | `docker-compose.yml`             | The `web`, `db` (Postgres 18), `redis` (Redis 7) and `caddy` services                                               |
 | `Caddyfile`                      | Caddy config: serves `luke-links.com` over HTTPS and proxies to `web:4567`                                          |
+| `k8s/`                           | Kubernetes manifests for running the app on a local kind cluster (not used in production)                           |
 | `infra/`                         | Terraform for GCP, the VM's deploy/backup/health scripts, systemd timers (see [`infra/README.md`](infra/README.md)) |
 | `.github/workflows/`             | CI (test, dashboard, build, deploy) and a manual rollback                                                           |
 | `loadtest.js`                    | k6 load test                                                                                                        |
@@ -48,6 +49,57 @@ docker compose exec web bundle exec rake db:create db:migrate
 ```
 
 The API is then on http://localhost:4567. The `caddy` service starts too and will keep trying to get a certificate for `luke-links.com`; that's harmless locally, or run `docker compose up -d --build web` to skip it.
+
+### With Kubernetes (kind)
+
+`k8s/` runs the same three services on a local [kind](https://kind.sigs.k8s.io/) cluster. Production still uses Docker Compose on the VM; these manifests are for local use only.
+
+| File               | What it creates                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `k8s/db.yaml`      | Postgres 18.6 Deployment (1 replica, `Recreate` strategy), a 1Gi `pgdata` PersistentVolumeClaim and the `db` Service |
+| `k8s/redis.yaml`   | Redis 8.10.2 Deployment with the same `maxmemory` settings as Compose, and the `redis` Service. No disk              |
+| `k8s/migrate.yaml` | A Job that runs `rake db:migrate` once and stops                                                                     |
+| `k8s/web.yaml`     | The `web` Deployment (2 replicas, readiness and liveness probes on `/health`) and the `web` Service                  |
+
+The manifests read `POSTGRES_PASSWORD` and `API_TOKEN` from a Secret called `shortener-secrets`, which isn't in the repo. The `web` and `migrate` Pods use a locally built `shortener-web:dev` image that has to be loaded into the cluster, since kind can't see images in your local Docker.
+
+```sh
+kind create cluster --name shortener
+kubectl create secret generic shortener-secrets \
+  --from-literal=POSTGRES_PASSWORD=change-me \
+  --from-literal=API_TOKEN=change-me
+
+docker build -t shortener-web:dev .
+kind load docker-image shortener-web:dev --name shortener
+
+kubectl apply -f k8s/db.yaml -f k8s/redis.yaml
+kubectl rollout status deployment/db
+kubectl apply -f k8s/migrate.yaml
+kubectl wait --for=condition=complete job/migrate --timeout=120s
+kubectl apply -f k8s/web.yaml
+kubectl rollout status deployment/web
+
+kubectl port-forward service/web 4567:4567
+```
+
+The API is then on http://localhost:4567, so the dashboard works against it unchanged. There's no `db:create` step: Postgres creates the `url_shortener` database on first start from `POSTGRES_DB`.
+
+After changing the app, rebuild and reload the image, then restart the Pods (the tag stays `:dev`, so Kubernetes won't notice a new image on its own):
+
+```sh
+docker build -t shortener-web:dev .
+kind load docker-image shortener-web:dev --name shortener
+kubectl rollout restart deployment/web
+```
+
+A Job only runs once, so to run new migrations delete it and apply it again:
+
+```sh
+kubectl delete job migrate
+kubectl apply -f k8s/migrate.yaml
+```
+
+Postgres data lives in the `pgdata` claim and survives the `db` Pod being replaced. `kind delete cluster --name shortener` removes everything, data included.
 
 ### Without Docker
 
@@ -104,6 +156,7 @@ Pushes to `main` then also run:
 
 3. **build**: logs in to GCP through Workload Identity Federation, then builds the image and pushes it to Artifact Registry tagged with the commit SHA.
 4. **deploy**: skips the deploy if a newer commit has landed on `main`. Otherwise it SSHes into the VM as `deploy <sha>` and then `health`. The SSH key is limited to `infra/bin/deploy.sh`, which:
+
    - pulls the image for that commit
    - runs migrations from the new image before changing the checkout, so a failed migration leaves the running version alone
    - checks out the commit and restarts the stack with `docker compose up -d --no-build`
