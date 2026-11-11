@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 8.7"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.0"
+    }
   }
 }
 
@@ -17,3 +21,6 @@ provider "google" {
   user_project_override = true
   billing_project       = "project-e985c781-9e31-44bf-bee"
 }
+# Cloudflare manages DNS for luke-links.com. The API token is read from the
+# CLOUDFLARE_API_TOKEN environment variable (run `cfenv` first); it is never stored in the repo.
+provider "cloudflare" {}
