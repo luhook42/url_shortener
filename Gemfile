@@ -13,7 +13,7 @@ gem 'redis'
 gem 'sinatra'
 gem 'sinatra-activerecord'
 
-gem 'minitest', '~> 6.0', group: :test
+gem 'minitest', '~> 6.1', group: :test
 gem 'rack-test', '~> 2.3', group: :test
 
 gem 'rubocop', '~> 1.92', group: :development
