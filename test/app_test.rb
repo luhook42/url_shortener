@@ -133,4 +133,22 @@ class AppTest < AppTestCase
     assert_empty out, 'malformed codes should be rejected before any lookup or logging'
     refute_match(/^cache HIT for admin/, out)
   end
+
+  def test_bad_url_in_database_is_never_redirected_to
+    Link.create!(short_code: 'xss0002', long_url: 'javascript:alert(document.domain)')
+
+    get '/xss0002'
+
+    assert_equal 404, last_response.status
+    assert_nil last_response.headers['Location']
+  end
+
+  def test_bad_url_in_cache_is_never_redirected_to
+    RedisPool.safely { |redis| redis.set('link:abc1234', 'javascript:alert(1)') }
+
+    get '/abc1234'
+
+    assert_equal 404, last_response.status
+    assert_nil last_response.headers['Location']
+  end
 end

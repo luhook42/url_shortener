@@ -98,11 +98,13 @@ get '/:code' do
   cached_url = RedisPool.safely { |redis| redis.get(cache_key) }
   if cached_url
     puts "cache HIT for #{code.inspect}"
+    halt 404, 'not found' unless valid_http_url?(cached_url)
     redirect cached_url, 302
   else
     puts "cache MISS for #{code.inspect}, querying postgres"
     link = Link.find_by(short_code: code)
     halt 404, 'not found' unless link
+    halt 404, 'not found' unless valid_http_url?(link.long_url)
 
     # nx: never overwrite a value written by PUT /links/:code. Without it, a
     # request that read the old row could re-cache the old URL after an update.
