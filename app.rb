@@ -58,6 +58,21 @@ rescue URI::InvalidURIError
   false
 end
 
+def cache_key(code)
+  "link:#{code}"
+end
+
+def json_error(status, message)
+  halt status, { error: message }.to_json
+end
+
+# Returns the URL, or halts with a JSON 400 if it is missing or not http(s).
+def require_valid_url!(value)
+  json_error 400, 'missing url' unless value
+  json_error 400, 'invalid url' unless valid_http_url?(value)
+  value
+end
+
 def authorized?
   expected = ENV['API_TOKEN'].to_s
   given = request.env['HTTP_AUTHORIZATION'].to_s.delete_prefix('Bearer ')
@@ -65,7 +80,7 @@ def authorized?
 end
 
 before %r{/links(?:/.*)?} do
-  halt 401, { error: 'unauthorized' }.to_json unless authorized?
+  json_error 401, 'unauthorized' unless authorized?
 end
 
 get '/links' do
@@ -86,7 +101,6 @@ end
 
 get '/:code' do
   code = params['code']
-  cache_key = "link:#{code}"
 
   headers['Cache-Control'] = 'no-cache'
   halt 404, 'not found' unless CODE_FORMAT.match?(code)
@@ -95,29 +109,28 @@ get '/:code' do
   # no rows, so this is a no-op for them.
   Link.where(short_code: code).update_all('click_count = click_count + 1')
 
-  cached_url = RedisPool.safely { |redis| redis.get(cache_key) }
-  if cached_url
+  url = RedisPool.safely { |redis| redis.get(cache_key(code)) }
+  if url
     puts "cache HIT for #{code.inspect}"
-    halt 404, 'not found' unless valid_http_url?(cached_url)
-    redirect cached_url, 302
   else
     puts "cache MISS for #{code.inspect}, querying postgres"
-    link = Link.find_by(short_code: code)
-    halt 404, 'not found' unless link
-    halt 404, 'not found' unless valid_http_url?(link.long_url)
+    url = Link.find_by(short_code: code)&.long_url
+    halt 404, 'not found' unless url
 
     # nx: never overwrite a value written by PUT /links/:code. Without it, a
     # request that read the old row could re-cache the old URL after an update.
-    RedisPool.safely { |redis| redis.set(cache_key, link.long_url, ex: CACHE_TTL, nx: true) }
-    redirect link.long_url, 302
+    RedisPool.safely { |redis| redis.set(cache_key(code), url, ex: CACHE_TTL, nx: true) }
   end
+
+  # Checked on every redirect, cached or not: Postgres or Redis may hold a URL
+  # that never went through the API's validation.
+  halt 404, 'not found' unless valid_http_url?(url)
+  redirect url, 302
 end
 
 post '/links' do
   content_type :json
-  long_url = params['url']
-  halt 400, { error: 'missing url' }.to_json unless long_url
-  halt 400, { error: 'invalid url' }.to_json unless valid_http_url?(long_url)
+  long_url = require_valid_url!(params['url'])
 
   link = nil
   loop do
@@ -135,16 +148,14 @@ put '/links/:code' do
   content_type :json
   code = params['code']
   link = Link.find_by(short_code: code)
-  halt 404, { error: 'not found' }.to_json unless link
+  json_error 404, 'not found' unless link
 
-  new_url = params['url']
-  halt 400, { error: 'missing url' }.to_json unless new_url
-  halt 400, { error: 'invalid url' }.to_json unless valid_http_url?(new_url)
+  new_url = require_valid_url!(params['url'])
 
   link.update!(long_url: new_url)
   # Write the new URL instead of deleting the key, so a concurrent cache miss
   # (which uses nx: true) cannot put the old URL back.
-  RedisPool.pool.with { |redis| redis.set("link:#{code}", new_url, ex: CACHE_TTL) }
+  RedisPool.pool.with { |redis| redis.set(cache_key(code), new_url, ex: CACHE_TTL) }
 
   link.to_json
 end
