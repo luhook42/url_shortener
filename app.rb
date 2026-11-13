@@ -18,6 +18,9 @@ end
 set :database_file, 'config/database.yml'
 
 CODE_CHARS = [*'a'..'z', *'A'..'Z', *'0'..'9'].freeze
+# Every real short code matches this. Anything else is rejected before it
+# reaches Redis, Postgres or the logs.
+CODE_FORMAT = /\A[a-zA-Z0-9]{7}\z/.freeze
 CACHE_TTL = 86_400 # seconds (24 hours)
 
 # Manages pooled Redis connections for the application.
@@ -86,6 +89,7 @@ get '/:code' do
   cache_key = "link:#{code}"
 
   headers['Cache-Control'] = 'no-cache'
+  halt 404, 'not found' unless CODE_FORMAT.match?(code)
 
   # Atomic increment on every redirect, cache hit or miss. Unknown codes match
   # no rows, so this is a no-op for them.
@@ -93,10 +97,10 @@ get '/:code' do
 
   cached_url = RedisPool.safely { |redis| redis.get(cache_key) }
   if cached_url
-    puts "cache HIT for #{code}"
+    puts "cache HIT for #{code.inspect}"
     redirect cached_url, 302
   else
-    puts "cache MISS for #{code}, querying postgres"
+    puts "cache MISS for #{code.inspect}, querying postgres"
     link = Link.find_by(short_code: code)
     halt 404, 'not found' unless link
 

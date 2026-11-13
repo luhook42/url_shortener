@@ -125,4 +125,11 @@ class AppTest < AppTestCase
     assert_operator ttl, :>, 0
     assert_operator ttl, :<=, 86_400
   end
+
+  def test_malformed_code_is_rejected_and_not_logged_raw
+    out, = capture_io { get '/x%0Acache%20HIT%20for%20admin' }
+
+    assert_equal 404, last_response.status
+    refute_match(/^cache HIT for admin/, out)
+  end
 end
