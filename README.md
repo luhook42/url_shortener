@@ -12,7 +12,7 @@ A small URL shortener: a Sinatra API backed by Postgres, with Redis caching the 
 | `test/`                          | Minitest + Rack::Test tests                                                                                         |
 | `dashboard/`                     | React + TypeScript + Vite front end                                                                                 |
 | `Dockerfile`                     | Two-stage production image that runs Puma as a non-root `app` user                                                  |
-| `docker-compose.yml`             | The `web`, `db` (Postgres 18), `redis` (Redis 7) and `caddy` services                                               |
+| `docker-compose.yml`             | The `web`, `db` (Postgres 18), `redis` (Redis 8.10) and `caddy` services                                            |
 | `Caddyfile`                      | Caddy config: serves `luke-links.com` over HTTPS and proxies to `web:4567`                                          |
 | `k8s/`                           | Kubernetes manifests for running the app on a local kind cluster (not used in production)                           |
 | `infra/`                         | Terraform for GCP, the VM's deploy/backup/health scripts, systemd timers (see [`infra/README.md`](infra/README.md)) |
@@ -57,7 +57,7 @@ The API is then on http://localhost:4567. The `caddy` service starts too and wil
 | File               | What it creates                                                                                                      |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `k8s/db.yaml`      | Postgres 18.6 Deployment (1 replica, `Recreate` strategy), a 1Gi `pgdata` PersistentVolumeClaim and the `db` Service |
-| `k8s/redis.yaml`   | Redis 8.10.2 Deployment with the same `maxmemory` settings as Compose, and the `redis` Service. No disk              |
+| `k8s/redis.yaml`   | Redis 8.10.3 Deployment with the same `maxmemory` settings as Compose, and the `redis` Service. No disk              |
 | `k8s/migrate.yaml` | A Job that runs `rake db:migrate` once and stops                                                                     |
 | `k8s/web.yaml`     | The `web` Deployment (2 replicas, readiness and liveness probes on `/health`) and the `web` Service                  |
 
@@ -103,7 +103,7 @@ Postgres data lives in the `pgdata` claim and survives the `db` Pod being replac
 
 ### Without Docker
 
-Needs Ruby 4.0.8, plus Postgres and Redis running on localhost.
+Needs Ruby 4.0.9, plus Postgres and Redis running on localhost.
 
 ```sh
 bundle install
@@ -149,7 +149,7 @@ The test runs 50 virtual users for 30 seconds. Most requests are redirects, the 
 
 `.github/workflows/ci.yml` runs on every pull request and every push to `main`:
 
-1. **test**: runs the test suite against Postgres 18 and Redis 7 service containers.
+1. **test**: runs the test suite against Postgres 18 and Redis 8.10 service containers.
 2. **dashboard**: lints and builds the dashboard.
 
 Pushes to `main` then also run:
