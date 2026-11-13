@@ -1,5 +1,5 @@
 # Build stage: compilers and headers are only needed to build native gems (pg).
-FROM ruby:4.0.8-slim AS build
+FROM ruby:4.0.9-slim AS build
 ENV BUNDLE_WITHOUT=development:test
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential libpq-dev \
@@ -9,7 +9,7 @@ COPY Gemfile Gemfile.lock ./
 RUN bundle install && rm -rf /usr/local/bundle/cache
 
 # Runtime stage: only the Postgres client library and the installed gems.
-FROM ruby:4.0.8-slim
+FROM ruby:4.0.9-slim
 ENV BUNDLE_WITHOUT=development:test
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libpq5 \
