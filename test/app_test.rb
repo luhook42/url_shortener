@@ -126,10 +126,11 @@ class AppTest < AppTestCase
     assert_operator ttl, :<=, 86_400
   end
 
-  def test_malformed_code_is_rejected_and_not_logged_raw
+  def test_malformed_code_is_rejected_before_anything_runs
     out, = capture_io { get '/x%0Acache%20HIT%20for%20admin' }
 
     assert_equal 404, last_response.status
+    assert_empty out, 'malformed codes should be rejected before any lookup or logging'
     refute_match(/^cache HIT for admin/, out)
   end
 end
