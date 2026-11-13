@@ -109,22 +109,21 @@ get '/:code' do
   # no rows, so this is a no-op for them.
   Link.where(short_code: code).update_all('click_count = click_count + 1')
 
-  url = RedisPool.safely { |redis| redis.get(cache_key(code)) }
-  if url
+  cached_url = RedisPool.safely { |redis| redis.get(cache_key(code)) }
+  if cached_url
     puts "cache HIT for #{code.inspect}"
   else
     puts "cache MISS for #{code.inspect}, querying postgres"
-    url = Link.find_by(short_code: code)&.long_url
-    halt 404, 'not found' unless url
-
-    # nx: never overwrite a value written by PUT /links/:code. Without it, a
-    # request that read the old row could re-cache the old URL after an update.
-    RedisPool.safely { |redis| redis.set(cache_key(code), url, ex: CACHE_TTL, nx: true) }
   end
+  url = cached_url || Link.find_by(short_code: code)&.long_url
 
-  # Checked on every redirect, cached or not: Postgres or Redis may hold a URL
-  # that never went through the API's validation.
-  halt 404, 'not found' unless valid_http_url?(url)
+  # Checked on every redirect, cached or not, and before caching: Postgres or
+  # Redis may hold a URL that never went through the API's validation.
+  halt 404, 'not found' unless url && valid_http_url?(url)
+
+  # nx: never overwrite a value written by PUT /links/:code. Without it, a
+  # request that read the old row could re-cache the old URL after an update.
+  RedisPool.safely { |redis| redis.set(cache_key(code), url, ex: CACHE_TTL, nx: true) } unless cached_url
   redirect url, 302
 end
 
