@@ -3,6 +3,7 @@
 source 'https://rubygems.org'
 
 # gem "rails"
+gem 'bcrypt', '~> 3.1'
 gem 'connection_pool', '~> 3.0'
 gem 'pg'
 gem 'puma'
