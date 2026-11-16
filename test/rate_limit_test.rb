@@ -62,4 +62,11 @@ class RateLimitTest < AppTestCase
 
     assert_equal 429, last_response.status
   end
+
+  # Exercises the throttles and the redirect route: both decode the path.
+  def test_badly_encoded_path_returns_not_found
+    get '/%ff'
+
+    assert_equal 404, last_response.status
+  end
 end

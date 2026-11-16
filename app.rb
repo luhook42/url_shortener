@@ -202,7 +202,7 @@ get '/:code' do
   code = params['code']
 
   headers['Cache-Control'] = 'no-cache'
-  halt 404, 'not found' unless CODE_FORMAT.match?(code)
+  halt 404, 'not found' unless code.valid_encoding? && CODE_FORMAT.match?(code)
 
   # Atomic increment on every redirect, cache hit or miss. Unknown codes match
   # no rows, so this is a no-op for them.
