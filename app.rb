@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
+require 'active_support'
+require 'active_support/cache'
 require 'connection_pool'
+require 'rack/attack'
 require 'rack/cors'
 require 'redis'
 require 'sinatra'
@@ -8,12 +11,9 @@ require 'sinatra/activerecord'
 require 'uri'
 require_relative 'models/link'
 
-use Rack::Cors do
-  allow do
-    origins 'http://localhost:5173'
-    resource '/*', headers: :any, methods: %i[get post put delete options]
-  end
-end
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 
 set :database_file, 'config/database.yml'
 
@@ -47,6 +47,58 @@ module RedisPool
   end
 end
 
+# ---------------------------------------------------------------------------
+# Middleware (runs in the order it is added, outermost first)
+# ---------------------------------------------------------------------------
+
+use Rack::Cors do
+  allow do
+    origins 'http://localhost:5173'
+    resource '/*', headers: :any, methods: %i[get post put delete options]
+  end
+end
+
+# Rate limits per client IP. Counts live in Redis so every Puma worker shares them.
+# Tests use an in-memory store so each test starts from zero.
+Rack::Attack.cache.store =
+  if ENV['RACK_ENV'] == 'test'
+    ActiveSupport::Cache::MemoryStore.new
+  else
+    ActiveSupport::Cache::RedisCacheStore.new(redis: RedisPool.pool)
+  end
+Rack::Attack.throttled_response_retry_after_header = true
+
+# Caddy sets X-Forwarded-For itself but passes a client's Forwarded header
+# through untouched, and Rack would otherwise prefer Forwarded. Reading only
+# X-Forwarded-For stops clients faking req.ip to dodge the limits.
+Rack::Request.forwarded_priority = [:x_forwarded]
+
+# The API itself, but not short codes that happen to start with "links".
+API_PATH = %r{\A/links(?:/|\z)}.freeze
+
+# Sinatra decodes the path before routing (/%6Cinks reaches the /links
+# routes), so the throttles must decode it too or encoded paths dodge the
+# API limit. .b keeps a bad encoding like /%ff from raising in the match.
+def throttle_path(req)
+  Rack::Utils.unescape_path(req.path).b
+end
+
+Rack::Attack.throttle('api/ip', limit: 60, period: 60) do |req|
+  req.ip if API_PATH.match?(throttle_path(req))
+end
+
+Rack::Attack.throttle('redirect/ip', limit: 600, period: 60) do |req|
+  path = throttle_path(req)
+  req.ip if req.get? && !API_PATH.match?(path) && path != '/health'
+end
+
+# After Rack::Cors, so a 429 still carries CORS headers the dashboard can read.
+use Rack::Attack
+
+# ---------------------------------------------------------------------------
+# Plain functions (no request needed; the Rakefile uses generate_code too)
+# ---------------------------------------------------------------------------
+
 def generate_code(length = 7)
   Array.new(length) { CODE_CHARS.sample }.join
 end
@@ -62,31 +114,33 @@ def cache_key(code)
   "link:#{code}"
 end
 
-def json_error(status, message)
-  halt status, { error: message }.to_json
+# ---------------------------------------------------------------------------
+# Request helpers (use the current request, so they only work inside routes)
+# ---------------------------------------------------------------------------
+
+helpers do
+  def authorized?
+    expected = ENV['API_TOKEN'].to_s
+    given = request.env['HTTP_AUTHORIZATION'].to_s.delete_prefix('Bearer ')
+    !expected.empty? && Rack::Utils.secure_compare(given, expected)
+  end
+
+  def json_error(status, message)
+    halt status, { error: message }.to_json
+  end
+
+  # Returns the URL, or halts with a JSON 400 if it is missing or not http(s).
+  def require_valid_url!(value)
+    json_error 400, 'missing url' unless value
+    json_error 400, 'invalid url' unless valid_http_url?(value)
+    value
+  end
 end
 
-# Returns the URL, or halts with a JSON 400 if it is missing or not http(s).
-def require_valid_url!(value)
-  json_error 400, 'missing url' unless value
-  json_error 400, 'invalid url' unless valid_http_url?(value)
-  value
-end
-
-def authorized?
-  expected = ENV['API_TOKEN'].to_s
-  given = request.env['HTTP_AUTHORIZATION'].to_s.delete_prefix('Bearer ')
-  !expected.empty? && Rack::Utils.secure_compare(given, expected)
-end
-
-before %r{/links(?:/.*)?} do
-  json_error 401, 'unauthorized' unless authorized?
-end
-
-get '/links' do
-  content_type :json
-  Link.order(created_at: :desc).to_json
-end
+# ---------------------------------------------------------------------------
+# Routes. Order matters: Sinatra uses the first match, and get '/:code' would
+# also match /links and /health, so it must stay last.
+# ---------------------------------------------------------------------------
 
 # Used by the deploy gate, site-health.sh and the GCP uptime check, so it must
 # fail when the app cannot serve redirects, not just when Puma is down.
@@ -99,32 +153,15 @@ rescue StandardError => e
   halt 503, 'unhealthy'
 end
 
-get '/:code' do
-  code = params['code']
+# --- Links API (token required) ---
 
-  headers['Cache-Control'] = 'no-cache'
-  halt 404, 'not found' unless CODE_FORMAT.match?(code)
+before %r{/links(?:/.*)?} do
+  json_error 401, 'unauthorized' unless authorized?
+end
 
-  # Atomic increment on every redirect, cache hit or miss. Unknown codes match
-  # no rows, so this is a no-op for them.
-  Link.where(short_code: code).update_all('click_count = click_count + 1')
-
-  cached_url = RedisPool.safely { |redis| redis.get(cache_key(code)) }
-  if cached_url
-    puts "cache HIT for #{code.inspect}"
-  else
-    puts "cache MISS for #{code.inspect}, querying postgres"
-  end
-  url = cached_url || Link.find_by(short_code: code)&.long_url
-
-  # Checked on every redirect, cached or not, and before caching: Postgres or
-  # Redis may hold a URL that never went through the API's validation.
-  halt 404, 'not found' unless url && valid_http_url?(url)
-
-  # nx: never overwrite a value written by PUT /links/:code. Without it, a
-  # request that read the old row could re-cache the old URL after an update.
-  RedisPool.safely { |redis| redis.set(cache_key(code), url, ex: CACHE_TTL, nx: true) } unless cached_url
-  redirect url, 302
+get '/links' do
+  content_type :json
+  Link.order(created_at: :desc).to_json
 end
 
 post '/links' do
@@ -157,4 +194,34 @@ put '/links/:code' do
   RedisPool.pool.with { |redis| redis.set(cache_key(code), new_url, ex: CACHE_TTL) }
 
   link.to_json
+end
+
+# --- Redirects (public, must stay last) ---
+
+get '/:code' do
+  code = params['code']
+
+  headers['Cache-Control'] = 'no-cache'
+  halt 404, 'not found' unless code.valid_encoding? && CODE_FORMAT.match?(code)
+
+  # Atomic increment on every redirect, cache hit or miss. Unknown codes match
+  # no rows, so this is a no-op for them.
+  Link.where(short_code: code).update_all('click_count = click_count + 1')
+
+  cached_url = RedisPool.safely { |redis| redis.get(cache_key(code)) }
+  if cached_url
+    puts "cache HIT for #{code.inspect}"
+  else
+    puts "cache MISS for #{code.inspect}, querying postgres"
+  end
+  url = cached_url || Link.find_by(short_code: code)&.long_url
+
+  # Checked on every redirect, cached or not, and before caching: Postgres or
+  # Redis may hold a URL that never went through the API's validation.
+  halt 404, 'not found' unless url && valid_http_url?(url)
+
+  # nx: never overwrite a value written by PUT /links/:code. Without it, a
+  # request that read the old row could re-cache the old URL after an update.
+  RedisPool.safely { |redis| redis.set(cache_key(code), url, ex: CACHE_TTL, nx: true) } unless cached_url
+  redirect url, 302
 end
