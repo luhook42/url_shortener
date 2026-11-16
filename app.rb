@@ -204,10 +204,6 @@ get '/:code' do
   headers['Cache-Control'] = 'no-cache'
   halt 404, 'not found' unless code.valid_encoding? && CODE_FORMAT.match?(code)
 
-  # Atomic increment on every redirect, cache hit or miss. Unknown codes match
-  # no rows, so this is a no-op for them.
-  Link.where(short_code: code).update_all('click_count = click_count + 1')
-
   cached_url = RedisPool.safely { |redis| redis.get(cache_key(code)) }
   if cached_url
     puts "cache HIT for #{code.inspect}"
@@ -219,6 +215,10 @@ get '/:code' do
   # Checked on every redirect, cached or not, and before caching: Postgres or
   # Redis may hold a URL that never went through the API's validation.
   halt 404, 'not found' unless url && valid_http_url?(url)
+
+  # Atomic increment, cache hit or miss. It runs only once the code is known to
+  # exist, so a junk code costs one indexed lookup and no write.
+  Link.where(short_code: code).update_all('click_count = click_count + 1')
 
   # nx: never overwrite a value written by PUT /links/:code. Without it, a
   # request that read the old row could re-cache the old URL after an update.
