@@ -60,12 +60,20 @@ Rack::Attack.cache.store =
   end
 Rack::Attack.throttled_response_retry_after_header = true
 
+# Caddy sets X-Forwarded-For itself but passes a client's Forwarded header
+# through untouched, and Rack would otherwise prefer Forwarded. Reading only
+# X-Forwarded-For stops clients faking req.ip to dodge the limits.
+Rack::Request.forwarded_priority = [:x_forwarded]
+
+# The API itself, but not short codes that happen to start with "links".
+API_PATH = %r{\A/links(?:/|\z)}.freeze
+
 Rack::Attack.throttle('api/ip', limit: 60, period: 60) do |req|
-  req.ip if req.path.start_with?('/links')
+  req.ip if API_PATH.match?(req.path)
 end
 
 Rack::Attack.throttle('redirect/ip', limit: 600, period: 60) do |req|
-  req.ip if req.get? && !req.path.start_with?('/links', '/health')
+  req.ip if req.get? && !API_PATH.match?(req.path) && req.path != '/health'
 end
 
 # After Rack::Cors, so a 429 still carries CORS headers the dashboard can read.

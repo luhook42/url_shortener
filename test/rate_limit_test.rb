@@ -24,4 +24,27 @@ class RateLimitTest < AppTestCase
 
     assert_equal 200, last_response.status
   end
+
+  # Caddy overwrites X-Forwarded-For but passes a client's Forwarded header
+  # through, so a faked Forwarded must not give each request a fresh limit.
+  def test_faked_forwarded_header_does_not_bypass_limit
+    61.times { |i| get '/links', {}, 'HTTP_FORWARDED' => "for=198.51.100.#{i}" }
+
+    assert_equal 429, last_response.status
+  end
+
+  def test_each_real_client_gets_its_own_limit
+    60.times { get '/links', {}, 'HTTP_X_FORWARDED_FOR' => '203.0.113.1' }
+    get '/links', {}, 'HTTP_X_FORWARDED_FOR' => '203.0.113.2'
+
+    assert_equal 200, last_response.status
+  end
+
+  def test_short_code_starting_with_links_gets_redirect_limit
+    Link.create!(short_code: 'linksAB', long_url: 'https://example.com')
+
+    capture_io { 61.times { get '/linksAB' } }
+
+    assert_equal 302, last_response.status
+  end
 end
