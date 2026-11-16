@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Runs ON THE VM as root (called by sync-vm.sh). Compares every file under SRC
-# with the live file at the same path. check = show differences only; apply = back up and install.
+# Runs ON THE VM as root (called by sync-vm.sh and vm-drift-check.sh). Compares
+# every file under SRC with the live file at the same path.
+# check = show differences only, exit 1 if any differ; apply = back up and install.
 set -euo pipefail
 MODE="$1"; SRC="$2"
 BACKUP="/var/backups/vm-config/$(date -u +%Y%m%dT%H%M%SZ)"
@@ -30,8 +31,9 @@ done < <(find "$SRC" -type f -print0 | sort -z)
 
 if [[ "$MODE" == check ]]; then
   echo
-  if [[ $changed -eq 0 ]]; then echo "VM matches the repo."; else echo "$changed file(s) differ from the repo. Nothing was changed."; fi
-  exit 0
+  if [[ $changed -eq 0 ]]; then echo "VM matches the repo."; exit 0; fi
+  echo "$changed file(s) differ from the repo. Nothing was changed."
+  exit 1
 fi
 if [[ $reload_systemd -eq 1 ]]; then systemctl daemon-reload; echo "reloaded systemd"; fi
 for s in $(printf '%s\n' "${restart[@]:-}" | sort -u); do

@@ -9,21 +9,23 @@ Files under `vm/` sit at the same path they have on the VM: `vm/usr/local/bin/ba
 - `vm/usr/local/bin/deploy.sh`: the only command the restricted deploy key may run. Takes `deploy <sha>` or `health`. A deploy fetches from GitHub (and carries on with the commits already on the VM if GitHub is down), pulls the image tagged with that commit from Artifact Registry, runs `rake db:migrate` in the new image, checks out the commit, then restarts `web` without building. If the commit changes `Caddyfile`, it also recreates `caddy` so the new config is loaded.
 - `vm/usr/local/bin/backup-db.sh`: nightly pg_dump, copy to the GCS bucket, prune local backups older than 7 days, then ping the heartbeat monitor.
 - `vm/usr/local/bin/site-health.sh`: checks `localhost:4567/health` and pings the monitor (or its `/fail` URL).
-- `vm/etc/systemd/system/`: `backup-db.service` and `.timer` (03:00 UTC daily), `site-health.service` and `.timer` (every 5 minutes).
+- `vm/usr/local/bin/vm-apply.sh`: compares (`check`, exits 1 on any difference) or installs (`apply`) the files here. `sync-vm.sh` runs the copy it uploads; the drift check runs the installed, root-owned copy.
+- `vm/usr/local/bin/vm-drift-check.sh`: compares the installed files with `infra/vm` in the deployed checkout and pings its monitor, or its `/fail` URL with the names of the files that differ (never the diffs, which can include secrets from `/etc`).
+- `vm/etc/systemd/system/`: `backup-db.service` and `.timer` (03:00 UTC daily), `site-health.service` and `.timer` (every 5 minutes), `vm-drift-check.service` and `.timer` (04:00 UTC daily).
 - `vm/etc/systemd/journald.conf.d/size.conf`: caps the system journal at 200 MB.
 - `vm/etc/google-cloud-ops-agent/config.yaml`: adds `/var/log/auth.log` (SSH logins, sudo) to the logs sent to Cloud Logging.
-- `bin/sync-vm.sh` (run on your Mac) and `bin/vm-apply.sh` (runs on the VM): compare and install the files above.
+- `bin/sync-vm.sh` (run on your Mac): uploads `vm/` and runs `vm-apply.sh` on the VM to compare or install the files above.
 
 ## Installing and checking server files
 
-- `infra/bin/sync-vm.sh check` (from your Mac) shows what differs between the repo and the VM, and changes nothing. Run it monthly to catch drift.
+- `infra/bin/sync-vm.sh check` (from your Mac) shows what differs between the repo and the VM, and changes nothing. It exits 1 if anything differs. The drift check timer runs the same comparison daily and alerts you, so a forgotten `apply` doesn't go unnoticed.
 - `infra/bin/sync-vm.sh apply` saves each changed file to `/var/backups/vm-config/<time>/` on the VM, installs the repo version owned by root (755 in `bin/`, 644 elsewhere), then reloads systemd or restarts journald and the Ops Agent if their files changed.
-- Change the repo first and merge, then run `apply` from `main`.
+- Change the repo first and merge, then run `apply` from `main`. `apply` refuses to run unless you're on `main`, `infra/vm` has no uncommitted, untracked or ignored files, and `main` matches `origin/main`, because it installs your working copy as it is.
 - Only `/etc` and `/usr/local/bin` are allowed. Secrets are never copied.
 
 ## Not in this repo (secrets)
 
-- `/etc/backup-db.env` and `/etc/site-health.env`: one line each, `HC_URL=<healthchecks.io ping URL>`. Owned by root, mode 600. Create them on the VM with a hidden prompt (`read -rsp`) so the URL never lands in shell history.
+- `/etc/backup-db.env`, `/etc/site-health.env` and `/etc/vm-drift.env`: one line each, `HC_URL=<healthchecks.io ping URL>`. Owned by root, mode 600. Create them on the VM with a hidden prompt (`read -rsp`) so the URL never lands in shell history.
 - The deploy private key lives only in the GitHub secret `VM_SSH_KEY`.
 - The app's `.env` stays git-ignored.
 
@@ -31,8 +33,8 @@ Files under `vm/` sit at the same path they have on the VM: `vm/usr/local/bin/ba
 
 1. Install the server files from your Mac: `infra/bin/sync-vm.sh apply`.
 2. Let Docker pull from Artifact Registry: `sudo gcloud auth configure-docker us-central1-docker.pkg.dev` (use `sudo` because `deploy.sh` runs `sudo docker`). The VM's service account needs `artifactregistry.reader` (Terraform: `registry_access.tf`) and the `devstorage` scope.
-3. Create the two env files described above (root, mode 600).
-4. Enable the timers: `sudo systemctl enable --now backup-db.timer site-health.timer`
+3. Create the three env files described above (root, mode 600).
+4. Enable the timers: `sudo systemctl enable --now backup-db.timer site-health.timer vm-drift-check.timer`
 5. Add the deploy public key to `~/.ssh/authorized_keys` with these restrictions in front of it: `command="/usr/local/bin/deploy.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty`
 6. Update the `VM_KNOWN_HOSTS` GitHub secret (a new VM has a new host key).
 
