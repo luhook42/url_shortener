@@ -47,4 +47,19 @@ class RateLimitTest < AppTestCase
 
     assert_equal 302, last_response.status
   end
+
+  # Sinatra decodes the path before routing, so /%6Cinks reaches the /links
+  # routes. The throttles must see it as /links too.
+  def test_percent_encoded_api_path_gets_api_limit
+    60.times { get '/%6Cinks' }
+    get '/%6Cinks'
+
+    assert_equal 429, last_response.status
+  end
+
+  def test_percent_encoded_api_path_is_limited_for_writes
+    61.times { post '/lin%6Bs', url: 'https://example.com' }
+
+    assert_equal 429, last_response.status
+  end
 end

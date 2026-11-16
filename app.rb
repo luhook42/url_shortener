@@ -76,12 +76,20 @@ Rack::Request.forwarded_priority = [:x_forwarded]
 # The API itself, but not short codes that happen to start with "links".
 API_PATH = %r{\A/links(?:/|\z)}.freeze
 
+# Sinatra decodes the path before routing (/%6Cinks reaches the /links
+# routes), so the throttles must decode it too or encoded paths dodge the
+# API limit. .b keeps a bad encoding like /%ff from raising in the match.
+def throttle_path(req)
+  Rack::Utils.unescape_path(req.path).b
+end
+
 Rack::Attack.throttle('api/ip', limit: 60, period: 60) do |req|
-  req.ip if API_PATH.match?(req.path)
+  req.ip if API_PATH.match?(throttle_path(req))
 end
 
 Rack::Attack.throttle('redirect/ip', limit: 600, period: 60) do |req|
-  req.ip if req.get? && !API_PATH.match?(req.path) && req.path != '/health'
+  path = throttle_path(req)
+  req.ip if req.get? && !API_PATH.match?(path) && path != '/health'
 end
 
 # After Rack::Cors, so a 429 still carries CORS headers the dashboard can read.
