@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
+require 'active_support'
+require 'active_support/cache'
 require 'connection_pool'
+require 'rack/attack'
 require 'rack/cors'
 require 'redis'
 require 'sinatra'
@@ -46,6 +49,27 @@ module RedisPool
     @pool = nil
   end
 end
+
+# Rate limits per client IP. Counts live in Redis so every Puma worker shares them.
+# Tests use an in-memory store so each test starts from zero.
+Rack::Attack.cache.store =
+  if ENV['RACK_ENV'] == 'test'
+    ActiveSupport::Cache::MemoryStore.new
+  else
+    ActiveSupport::Cache::RedisCacheStore.new(redis: RedisPool.pool)
+  end
+Rack::Attack.throttled_response_retry_after_header = true
+
+Rack::Attack.throttle('api/ip', limit: 60, period: 60) do |req|
+  req.ip if req.path.start_with?('/links')
+end
+
+Rack::Attack.throttle('redirect/ip', limit: 600, period: 60) do |req|
+  req.ip if req.get? && !req.path.start_with?('/links', '/health')
+end
+
+# After Rack::Cors, so a 429 still carries CORS headers the dashboard can read.
+use Rack::Attack
 
 def generate_code(length = 7)
   Array.new(length) { CODE_CHARS.sample }.join
