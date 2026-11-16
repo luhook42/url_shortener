@@ -10,6 +10,7 @@ require 'sinatra'
 require 'sinatra/activerecord'
 require 'uri'
 require_relative 'models/link'
+require_relative 'models/user'
 
 # ---------------------------------------------------------------------------
 # Configuration

@@ -18,6 +18,7 @@ class AppTestCase < Minitest::Test
 
   def setup
     Link.delete_all
+    User.delete_all
     RedisPool.pool.with(&:flushdb)
     # Rate-limit counters share one in-memory store for the whole run. Without
     # this, requests add up across tests and random ones start getting 429s.
