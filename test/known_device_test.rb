@@ -1,13 +1,10 @@
 # frozen_string_literal: true
 
-require 'active_support/testing/time_helpers'
 require_relative 'test_helper'
 
 # Someone who knows your email can use up its sign-in limit. A browser you've
 # signed in with before skips that limit, so they can't lock you out.
 class KnownDeviceTest < AppTestCase
-  include ActiveSupport::Testing::TimeHelpers
-
   PASSWORD = 'correct horse battery staple'
   OWNER_IP = { 'HTTP_X_FORWARDED_FOR' => '198.51.100.1' }.freeze
 

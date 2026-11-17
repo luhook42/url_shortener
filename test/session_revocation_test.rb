@@ -1,14 +1,11 @@
 # frozen_string_literal: true
 
-require 'active_support/testing/time_helpers'
 require_relative 'test_helper'
 
 # The session cookie is stored in the browser, so the server has to decide when
 # one stops working: after sign-out (even for a copy of the cookie), and 8
 # hours after sign-in however often it's used.
 class SessionRevocationTest < AppTestCase
-  include ActiveSupport::Testing::TimeHelpers
-
   PASSWORD = 'correct horse battery staple'
 
   def setup
