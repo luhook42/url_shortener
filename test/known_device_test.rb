@@ -18,10 +18,6 @@ class KnownDeviceTest < AppTestCase
     User.create!(email: 'other@example.com', password: PASSWORD)
   end
 
-  def teardown
-    travel_back
-  end
-
   def test_owner_on_a_known_device_is_not_locked_out
     sign_in_as_owner
     use_up_email_limit('luke@example.com')
@@ -52,6 +48,18 @@ class KnownDeviceTest < AppTestCase
     sign_in_as_owner
     5.times { |i| post '/session', { email: 'luke@example.com', password: 'wrong' }, ip(i) }
     post '/session', { email: 'luke@example.com', password: PASSWORD }, ip(99)
+
+    assert_equal 429, last_response.status
+  end
+
+  # Every sign-in mints a new token, so someone who once had the password could
+  # collect many. Changing the password must make all of them useless.
+  def test_device_tokens_stop_working_when_the_password_changes
+    sign_in_as_owner
+    User.find_by(email: 'luke@example.com').update!(password: 'a brand new long password')
+    use_up_email_limit('luke@example.com')
+
+    post '/session', { email: 'luke@example.com', password: 'a brand new long password' }, OWNER_IP
 
     assert_equal 429, last_response.status
   end

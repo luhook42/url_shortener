@@ -53,11 +53,20 @@ class Rack::Attack::Request < ::Rack::Request # rubocop:disable Style/ClassAndMo
     params['email'].to_s.strip.downcase.presence
   end
 
-  # Set when this browser has signed in to this email before (lib/known_device.rb).
+  # Set when this browser has signed in to this account before, with its
+  # current password (lib/known_device.rb). Only looks the user up when the
+  # request carries a device cookie.
   def known_device_id
     return @known_device_id if defined?(@known_device_id)
 
-    @known_device_id = sign_in_email && KNOWN_DEVICES.device_id(cookies[KnownDevice::COOKIE], sign_in_email)
+    token = cookies[KnownDevice::COOKIE]
+    @known_device_id = token && sign_in_email && KNOWN_DEVICES.device_id(token, sign_in_user)
+  end
+
+  # Middleware runs outside Sinatra's request cycle, so check a connection out
+  # and return it explicitly rather than leave one leased to this thread.
+  def sign_in_user
+    ActiveRecord::Base.connection_pool.with_connection { User.find_by(email: sign_in_email) }
   end
 end
 

@@ -233,7 +233,7 @@ post '/session' do
   # Kept after sign-out on purpose: it only exempts this browser from the
   # per-email limit, and is only sent to /session.
   response.set_cookie(KnownDevice::COOKIE,
-                      value: KNOWN_DEVICES.token_for(user.email), path: '/session',
+                      value: KNOWN_DEVICES.token_for(user), path: '/session',
                       expires: Time.now + KnownDevice::TTL,
                       httponly: true, secure: settings.production?, same_site: :lax)
   { email: user.email }.to_json

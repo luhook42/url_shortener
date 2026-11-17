@@ -17,10 +17,6 @@ class SessionRevocationTest < AppTestCase
     User.create!(email: 'luke@example.com', password: PASSWORD)
   end
 
-  def teardown
-    travel_back
-  end
-
   def test_copied_cookie_stops_working_after_sign_out
     stolen = sign_in
     delete '/session'
