@@ -33,11 +33,14 @@ if settings.session_secret.bytesize < 64
   abort 'SESSION_SECRET must be at least 64 bytes. Generate one with: ' \
         "ruby -rsecurerandom -e 'puts SecureRandom.hex(64)'"
 end
+# The cookie's expiry only tells the browser when to drop it, and is pushed
+# back on every request, so current_user also checks the time since sign-in.
+SESSION_TTL = 8 * 60 * 60 # seconds (8 hours)
 set :sessions,
     httponly: true,              # page JavaScript can't read it, so XSS can't steal it
     secure: production?,         # only sent over HTTPS in production
     same_site: :lax,             # not sent on most cross-site requests (CSRF defense)
-    expire_after: 8 * 60 * 60    # signed out after 8 hours
+    expire_after: SESSION_TTL    # signed out after 8 hours
 
 # Compared against when an email doesn't exist, so a wrong email takes as long
 # as a wrong password and the response time doesn't reveal which emails exist.
@@ -122,11 +125,17 @@ helpers do
     !expected.empty? && Rack::Utils.secure_compare(given, expected)
   end
 
-  # The signed-in user, or nil.
+  # The signed-in user, or nil. The cookie lives in the browser, so a copy of
+  # it would otherwise work forever: the session must be under SESSION_TTL old,
+  # and its session_version must still match (sign-out bumps it).
   def current_user
     return @current_user if defined?(@current_user)
 
-    @current_user = session[:user_id] && User.find_by(id: session[:user_id])
+    signed_in_at = session[:signed_in_at].to_i
+    @current_user =
+      if session[:user_id] && Time.now.to_i - signed_in_at < SESSION_TTL
+        User.find_by(id: session[:user_id], session_version: session[:session_version])
+      end
   end
 
   def json_error(status, message)
@@ -214,6 +223,8 @@ post '/session' do
 
   session.clear # a fresh session on sign-in, never one that existed before
   session[:user_id] = user.id
+  session[:session_version] = user.session_version
+  session[:signed_in_at] = Time.now.to_i
   { email: user.email }.to_json
 end
 
@@ -224,6 +235,8 @@ get '/session' do
 end
 
 delete '/session' do
+  # Ends every session for this user, including any copy of this cookie.
+  User.update_counters(current_user.id, session_version: 1) if current_user
   session.clear
   status 204
 end
