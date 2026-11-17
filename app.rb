@@ -86,56 +86,8 @@ use Rack::Cors do
   end
 end
 
-# Rate limits per client IP. Counts live in Redis so every Puma worker shares them.
-# Tests use an in-memory store so each test starts from zero.
-Rack::Attack.cache.store =
-  if ENV['RACK_ENV'] == 'test'
-    ActiveSupport::Cache::MemoryStore.new
-  else
-    ActiveSupport::Cache::RedisCacheStore.new(redis: RedisPool.pool)
-  end
-Rack::Attack.throttled_response_retry_after_header = true
-
-# Caddy sets X-Forwarded-For itself but passes a client's Forwarded header
-# through untouched, and Rack would otherwise prefer Forwarded. Reading only
-# X-Forwarded-For stops clients faking req.ip to dodge the limits.
-Rack::Request.forwarded_priority = [:x_forwarded]
-
-# The API itself, but not short codes that happen to start with "links".
-API_PATH = %r{\A/links(?:/|\z)}.freeze
-
-# Sinatra decodes the path before routing (/%6Cinks reaches the /links
-# routes), so the throttles must decode it too or encoded paths dodge the
-# API limit. .b keeps a bad encoding like /%ff from raising in the match.
-def throttle_path(req)
-  Rack::Utils.unescape_path(req.path).b
-end
-
-Rack::Attack.throttle('api/ip', limit: 60, period: 60) do |req|
-  req.ip if API_PATH.match?(throttle_path(req))
-end
-
-Rack::Attack.throttle('redirect/ip', limit: 600, period: 60) do |req|
-  path = throttle_path(req)
-  req.ip if req.get? && !API_PATH.match?(path) && path != '/health'
-end
-
-# Sign-in: each guess costs a bcrypt check, so limit guesses per IP, and per
-# email so spreading guesses across many IPs doesn't help either.
-SIGN_IN_PATH = '/session'
-
-def sign_in_attempt?(req)
-  req.post? && throttle_path(req) == SIGN_IN_PATH
-end
-
-Rack::Attack.throttle('sign-in/ip', limit: 10, period: 60) do |req|
-  req.ip if sign_in_attempt?(req)
-end
-
-Rack::Attack.throttle('sign-in/email', limit: 5, period: 60) do |req|
-  # Normalized like User#email, so case and spaces don't give fresh limits.
-  req.params['email'].to_s.strip.downcase.presence if sign_in_attempt?(req)
-end
+# Rate limits per client IP: see config/rack_attack.rb.
+require_relative 'config/rack_attack'
 
 # After Rack::Cors, so a 429 still carries CORS headers the dashboard can read.
 use Rack::Attack
