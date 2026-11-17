@@ -15,7 +15,7 @@ class SessionTest < AppTestCase
     post '/session', email: 'Luke@Example.com', password: PASSWORD
 
     assert_equal 200, last_response.status
-    cookie = last_response.headers['set-cookie']
+    cookie = cookie_named('rack.session')
     assert_match(/httponly/i, cookie)
     assert_match(/samesite=lax/i, cookie)
 

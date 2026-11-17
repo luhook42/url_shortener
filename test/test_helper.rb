@@ -26,4 +26,9 @@ class AppTestCase < Minitest::Test
     Rack::Attack.reset!
     header 'Authorization', 'Bearer test-token'
   end
+
+  # The Set-Cookie line for one cookie (a response can set several).
+  def cookie_named(name)
+    Array(last_response.headers['set-cookie']).find { |c| c.start_with?("#{name}=") }
+  end
 end

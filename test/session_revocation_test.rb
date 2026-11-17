@@ -66,6 +66,6 @@ class SessionRevocationTest < AppTestCase
   def sign_in
     post '/session', email: 'luke@example.com', password: PASSWORD
     assert_equal 200, last_response.status
-    last_response.headers['set-cookie'][/rack\.session=[^;]+/]
+    cookie_named('rack.session')[/\Arack\.session=[^;]+/]
   end
 end

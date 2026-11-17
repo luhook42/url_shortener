@@ -13,6 +13,7 @@ require 'sinatra/activerecord'
 require 'uri'
 require_relative 'models/link'
 require_relative 'models/user'
+require_relative 'lib/known_device'
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -45,6 +46,10 @@ set :sessions,
 # Compared against when an email doesn't exist, so a wrong email takes as long
 # as a wrong password and the response time doesn't reveal which emails exist.
 DUMMY_DIGEST = BCrypt::Password.create(SecureRandom.hex(32))
+
+# Browsers that have signed in before skip the per-email sign-in limit, so
+# nobody else can lock an account's owner out (see config/rack_attack.rb).
+KNOWN_DEVICES = KnownDevice.new(settings.session_secret)
 
 CODE_CHARS = [*'a'..'z', *'A'..'Z', *'0'..'9'].freeze
 # Every real short code matches this. Anything else is rejected before it
@@ -225,6 +230,12 @@ post '/session' do
   session[:user_id] = user.id
   session[:session_version] = user.session_version
   session[:signed_in_at] = Time.now.to_i
+  # Kept after sign-out on purpose: it only exempts this browser from the
+  # per-email limit, and is only sent to /session.
+  response.set_cookie(KnownDevice::COOKIE,
+                      value: KNOWN_DEVICES.token_for(user.email), path: '/session',
+                      expires: Time.now + KnownDevice::TTL,
+                      httponly: true, secure: settings.production?, same_site: :lax)
   { email: user.email }.to_json
 end
 

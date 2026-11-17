@@ -52,6 +52,13 @@ class Rack::Attack::Request < ::Rack::Request # rubocop:disable Style/ClassAndMo
   def sign_in_email
     params['email'].to_s.strip.downcase.presence
   end
+
+  # Set when this browser has signed in to this email before (lib/known_device.rb).
+  def known_device_id
+    return @known_device_id if defined?(@known_device_id)
+
+    @known_device_id = sign_in_email && KNOWN_DEVICES.device_id(cookies[KnownDevice::COOKIE], sign_in_email)
+  end
 end
 
 # Per minute. Sign-in is the tightest because each guess costs a bcrypt check,
@@ -59,4 +66,11 @@ end
 Rack::Attack.throttle('api/ip',        limit: 60,  period: 60) { |req| req.ip if req.api? }
 Rack::Attack.throttle('redirect/ip',   limit: 600, period: 60) { |req| req.ip if req.redirect? }
 Rack::Attack.throttle('sign-in/ip',    limit: 10,  period: 60) { |req| req.ip if req.sign_in? }
-Rack::Attack.throttle('sign-in/email', limit: 5,   period: 60) { |req| req.sign_in_email if req.sign_in? }
+
+# Known devices skip the per-email limit, which is what lets anyone else lock
+# an account's owner out. Each known device gets its own limit instead, so a
+# stolen device cookie still can't guess quickly.
+Rack::Attack.throttle('sign-in/email', limit: 5, period: 60) do |req|
+  req.sign_in_email if req.sign_in? && !req.known_device_id
+end
+Rack::Attack.throttle('sign-in/device', limit: 5, period: 60) { |req| req.known_device_id if req.sign_in? }
