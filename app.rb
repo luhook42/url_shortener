@@ -80,7 +80,9 @@ end
 use Rack::Cors do
   allow do
     origins 'http://localhost:5173'
-    resource '/*', headers: :any, methods: %i[get post put delete options]
+    # credentials: the browser sends and keeps the session cookie on the
+    # dashboard's requests. Only safe because origins is an exact list.
+    resource '/*', headers: :any, methods: %i[get post put delete options], credentials: true
   end
 end
 
@@ -116,6 +118,23 @@ end
 Rack::Attack.throttle('redirect/ip', limit: 600, period: 60) do |req|
   path = throttle_path(req)
   req.ip if req.get? && !API_PATH.match?(path) && path != '/health'
+end
+
+# Sign-in: each guess costs a bcrypt check, so limit guesses per IP, and per
+# email so spreading guesses across many IPs doesn't help either.
+SIGN_IN_PATH = '/session'
+
+def sign_in_attempt?(req)
+  req.post? && throttle_path(req) == SIGN_IN_PATH
+end
+
+Rack::Attack.throttle('sign-in/ip', limit: 10, period: 60) do |req|
+  req.ip if sign_in_attempt?(req)
+end
+
+Rack::Attack.throttle('sign-in/email', limit: 5, period: 60) do |req|
+  # Normalized like User#email, so case and spaces don't give fresh limits.
+  req.params['email'].to_s.strip.downcase.presence if sign_in_attempt?(req)
 end
 
 # After Rack::Cors, so a 429 still carries CORS headers the dashboard can read.
