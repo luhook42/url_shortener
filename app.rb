@@ -2,10 +2,12 @@
 
 require 'active_support'
 require 'active_support/cache'
+require 'bcrypt'
 require 'connection_pool'
 require 'rack/attack'
 require 'rack/cors'
 require 'redis'
+require 'securerandom'
 require 'sinatra'
 require 'sinatra/activerecord'
 require 'uri'
@@ -17,6 +19,29 @@ require_relative 'models/user'
 # ---------------------------------------------------------------------------
 
 set :database_file, 'config/database.yml'
+
+# Sessions: an encrypted, signed cookie holding only the signed-in user's id.
+# Required in production. Elsewhere a random one is fine; sessions just reset
+# on restart. (rake loads this file too, so tests and CI need no secret.)
+set :session_secret, ENV.fetch('SESSION_SECRET') {
+  abort 'SESSION_SECRET is not set.' if production?
+  SecureRandom.hex(64)
+}
+# rack-session only checks the length on the first request, which would make
+# every request (including /health) fail. Fail at boot with a clear message.
+if settings.session_secret.bytesize < 64
+  abort 'SESSION_SECRET must be at least 64 bytes. Generate one with: ' \
+        "ruby -rsecurerandom -e 'puts SecureRandom.hex(64)'"
+end
+set :sessions,
+    httponly: true,              # page JavaScript can't read it, so XSS can't steal it
+    secure: production?,         # only sent over HTTPS in production
+    same_site: :lax,             # not sent on most cross-site requests (CSRF defense)
+    expire_after: 8 * 60 * 60    # signed out after 8 hours
+
+# Compared against when an email doesn't exist, so a wrong email takes as long
+# as a wrong password and the response time doesn't reveal which emails exist.
+DUMMY_DIGEST = BCrypt::Password.create(SecureRandom.hex(32))
 
 CODE_CHARS = [*'a'..'z', *'A'..'Z', *'0'..'9'].freeze
 # Every real short code matches this. Anything else is rejected before it
@@ -126,6 +151,13 @@ helpers do
     !expected.empty? && Rack::Utils.secure_compare(given, expected)
   end
 
+  # The signed-in user, or nil.
+  def current_user
+    return @current_user if defined?(@current_user)
+
+    @current_user = session[:user_id] && User.find_by(id: session[:user_id])
+  end
+
   def json_error(status, message)
     halt status, { error: message }.to_json
   end
@@ -195,6 +227,34 @@ put '/links/:code' do
   RedisPool.pool.with { |redis| redis.set(cache_key(code), new_url, ex: CACHE_TTL) }
 
   link.to_json
+end
+
+# --- Sign in / sign out (session cookie) ---
+# Before get '/:code': "session" is seven letters, so it matches CODE_FORMAT.
+
+post '/session' do
+  content_type :json
+  user = User.find_by(email: params['email'].to_s)
+  password = params['password'].to_s
+
+  # Same work and same answer whether the email exists or not.
+  ok = user ? user.authenticate(password) : (BCrypt::Password.new(DUMMY_DIGEST).is_password?(password) && false)
+  json_error 401, 'invalid email or password' unless ok
+
+  session.clear # a fresh session on sign-in, never one that existed before
+  session[:user_id] = user.id
+  { email: user.email }.to_json
+end
+
+get '/session' do
+  content_type :json
+  json_error 401, 'not signed in' unless current_user
+  { email: current_user.email }.to_json
+end
+
+delete '/session' do
+  session.clear
+  status 204
 end
 
 # --- Redirects (public, must stay last) ---

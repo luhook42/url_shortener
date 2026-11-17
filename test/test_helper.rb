@@ -4,6 +4,7 @@ ENV['APP_ENV'] = 'test'
 ENV['RACK_ENV'] = 'test'
 ENV['REDIS_URL'] = 'redis://localhost:6379/1'
 ENV['API_TOKEN'] = 'test-token'
+ENV['SESSION_SECRET'] = 'test-secret-' * 8
 
 require 'minitest/autorun'
 require 'rack/test'
