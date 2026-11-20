@@ -1,42 +1,42 @@
 import type { Link } from "../types/link";
 
-interface ApiError {
+interface ErrorBody {
   error: string;
+}
+
+// Thrown for any non-2xx response, so callers can check the status (e.g. 401).
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
 }
 
 export const BASE_URL: string =
   import.meta.env.VITE_API_URL ?? "http://localhost:4567";
-const TOKEN: string | undefined = import.meta.env.VITE_API_TOKEN;
 
-async function apiRequest<T>(
+export async function apiRequest<T>(
   url: string,
   options: RequestInit = {},
 ): Promise<T> {
-  if (!TOKEN) {
-    throw new Error(
-      "VITE_API_TOKEN is not set. Add it to dashboard/.env.local.",
-    );
-  }
   const response = await fetch(url, {
     ...options,
-    // Send and keep the session cookie on cross-origin requests to the API.
+    // The session cookie identifies you. No token lives in this code anymore.
     credentials: "include",
-    headers: {
-      ...options.headers,
-      Authorization: `Bearer ${TOKEN}`,
-    },
   });
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try {
-      const err: ApiError = await response.json();
+      const err: ErrorBody = await response.json();
       if (err.error) message = err.error;
     } catch {
-      // body was not JSON, keep the status-based message
+      // body was not JSON (e.g. a 429), keep the status-based message
     }
-    throw new Error(message);
+    throw new ApiError(message, response.status);
   }
+  if (response.status === 204) return undefined as T; // sign-out has no body
   return response.json() as Promise<T>;
 }
 

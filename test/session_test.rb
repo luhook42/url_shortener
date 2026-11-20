@@ -23,6 +23,19 @@ class SessionTest < AppTestCase
     assert_equal 'luke@example.com', JSON.parse(last_response.body)['email']
   end
 
+  def test_links_accept_a_session_without_a_token
+    post '/session', email: 'luke@example.com', password: PASSWORD
+    get '/links'
+
+    assert_equal 200, last_response.status
+  end
+
+  def test_links_reject_no_session_and_no_token
+    get '/links'
+
+    assert_equal 401, last_response.status
+  end
+
   def test_wrong_password_and_unknown_email_look_the_same
     post '/session', email: 'luke@example.com', password: 'wrong password'
     wrong_password = [last_response.status, last_response.body]
