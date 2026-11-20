@@ -174,7 +174,8 @@ end
 # --- Links API (token required) ---
 
 before %r{/links(?:/.*)?} do
-  json_error 401, 'unauthorized' unless authorized?
+  # A signed-in dashboard user, or a script with the API token.
+  json_error 401, 'unauthorized' unless current_user || authorized?
 end
 
 get '/links' do
