@@ -19,6 +19,8 @@ async function apiRequest<T>(
   }
   const response = await fetch(url, {
     ...options,
+    // Send and keep the session cookie on cross-origin requests to the API.
+    credentials: "include",
     headers: {
       ...options.headers,
       Authorization: `Bearer ${TOKEN}`,

@@ -2,21 +2,54 @@
 
 require 'active_support'
 require 'active_support/cache'
+require 'bcrypt'
 require 'connection_pool'
 require 'rack/attack'
 require 'rack/cors'
 require 'redis'
+require 'securerandom'
 require 'sinatra'
 require 'sinatra/activerecord'
 require 'uri'
 require_relative 'models/link'
 require_relative 'models/user'
+require_relative 'lib/known_device'
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 set :database_file, 'config/database.yml'
+
+# Sessions: an encrypted, signed cookie holding only the signed-in user's id.
+# Required in production. Elsewhere a random one is fine; sessions just reset
+# on restart. (rake loads this file too, so tests and CI need no secret.)
+set :session_secret, ENV.fetch('SESSION_SECRET') {
+  abort 'SESSION_SECRET is not set.' if production?
+  SecureRandom.hex(64)
+}
+# rack-session only checks the length on the first request, which would make
+# every request (including /health) fail. Fail at boot with a clear message.
+if settings.session_secret.bytesize < 64
+  abort 'SESSION_SECRET must be at least 64 bytes. Generate one with: ' \
+        "ruby -rsecurerandom -e 'puts SecureRandom.hex(64)'"
+end
+# The cookie's expiry only tells the browser when to drop it, and is pushed
+# back on every request, so current_user also checks the time since sign-in.
+SESSION_TTL = 8 * 60 * 60 # seconds (8 hours)
+set :sessions,
+    httponly: true,              # page JavaScript can't read it, so XSS can't steal it
+    secure: production?,         # only sent over HTTPS in production
+    same_site: :lax,             # not sent on most cross-site requests (CSRF defense)
+    expire_after: SESSION_TTL    # signed out after 8 hours
+
+# Compared against when an email doesn't exist, so a wrong email takes as long
+# as a wrong password and the response time doesn't reveal which emails exist.
+DUMMY_DIGEST = BCrypt::Password.create(SecureRandom.hex(32))
+
+# Browsers that have signed in before skip the per-email sign-in limit, so
+# nobody else can lock an account's owner out (see config/rack_attack.rb).
+KNOWN_DEVICES = KnownDevice.new(settings.session_secret)
 
 CODE_CHARS = [*'a'..'z', *'A'..'Z', *'0'..'9'].freeze
 # Every real short code matches this. Anything else is rejected before it
@@ -55,43 +88,14 @@ end
 use Rack::Cors do
   allow do
     origins 'http://localhost:5173'
-    resource '/*', headers: :any, methods: %i[get post put delete options]
+    # credentials: the browser sends and keeps the session cookie on the
+    # dashboard's requests. Only safe because origins is an exact list.
+    resource '/*', headers: :any, methods: %i[get post put delete options], credentials: true
   end
 end
 
-# Rate limits per client IP. Counts live in Redis so every Puma worker shares them.
-# Tests use an in-memory store so each test starts from zero.
-Rack::Attack.cache.store =
-  if ENV['RACK_ENV'] == 'test'
-    ActiveSupport::Cache::MemoryStore.new
-  else
-    ActiveSupport::Cache::RedisCacheStore.new(redis: RedisPool.pool)
-  end
-Rack::Attack.throttled_response_retry_after_header = true
-
-# Caddy sets X-Forwarded-For itself but passes a client's Forwarded header
-# through untouched, and Rack would otherwise prefer Forwarded. Reading only
-# X-Forwarded-For stops clients faking req.ip to dodge the limits.
-Rack::Request.forwarded_priority = [:x_forwarded]
-
-# The API itself, but not short codes that happen to start with "links".
-API_PATH = %r{\A/links(?:/|\z)}.freeze
-
-# Sinatra decodes the path before routing (/%6Cinks reaches the /links
-# routes), so the throttles must decode it too or encoded paths dodge the
-# API limit. .b keeps a bad encoding like /%ff from raising in the match.
-def throttle_path(req)
-  Rack::Utils.unescape_path(req.path).b
-end
-
-Rack::Attack.throttle('api/ip', limit: 60, period: 60) do |req|
-  req.ip if API_PATH.match?(throttle_path(req))
-end
-
-Rack::Attack.throttle('redirect/ip', limit: 600, period: 60) do |req|
-  path = throttle_path(req)
-  req.ip if req.get? && !API_PATH.match?(path) && path != '/health'
-end
+# Rate limits per client IP: see config/rack_attack.rb.
+require_relative 'config/rack_attack'
 
 # After Rack::Cors, so a 429 still carries CORS headers the dashboard can read.
 use Rack::Attack
@@ -124,6 +128,19 @@ helpers do
     expected = ENV['API_TOKEN'].to_s
     given = request.env['HTTP_AUTHORIZATION'].to_s.delete_prefix('Bearer ')
     !expected.empty? && Rack::Utils.secure_compare(given, expected)
+  end
+
+  # The signed-in user, or nil. The cookie lives in the browser, so a copy of
+  # it would otherwise work forever: the session must be under SESSION_TTL old,
+  # and its session_version must still match (sign-out bumps it).
+  def current_user
+    return @current_user if defined?(@current_user)
+
+    signed_in_at = session[:signed_in_at].to_i
+    @current_user =
+      if session[:user_id] && Time.now.to_i - signed_in_at < SESSION_TTL
+        User.find_by(id: session[:user_id], session_version: session[:session_version])
+      end
   end
 
   def json_error(status, message)
@@ -195,6 +212,44 @@ put '/links/:code' do
   RedisPool.pool.with { |redis| redis.set(cache_key(code), new_url, ex: CACHE_TTL) }
 
   link.to_json
+end
+
+# --- Sign in / sign out (session cookie) ---
+# Before get '/:code': "session" is seven letters, so it matches CODE_FORMAT.
+
+post '/session' do
+  content_type :json
+  user = User.find_by(email: params['email'].to_s)
+  password = params['password'].to_s
+
+  # Same work and same answer whether the email exists or not.
+  ok = user ? user.authenticate(password) : (BCrypt::Password.new(DUMMY_DIGEST).is_password?(password) && false)
+  json_error 401, 'invalid email or password' unless ok
+
+  session.clear # a fresh session on sign-in, never one that existed before
+  session[:user_id] = user.id
+  session[:session_version] = user.session_version
+  session[:signed_in_at] = Time.now.to_i
+  # Kept after sign-out on purpose: it only exempts this browser from the
+  # per-email limit, and is only sent to /session.
+  response.set_cookie(KnownDevice::COOKIE,
+                      value: KNOWN_DEVICES.token_for(user), path: '/session',
+                      expires: Time.now + KnownDevice::TTL,
+                      httponly: true, secure: settings.production?, same_site: :lax)
+  { email: user.email }.to_json
+end
+
+get '/session' do
+  content_type :json
+  json_error 401, 'not signed in' unless current_user
+  { email: current_user.email }.to_json
+end
+
+delete '/session' do
+  # Ends every session for this user, including any copy of this cookie.
+  User.update_counters(current_user.id, session_version: 1) if current_user
+  session.clear
+  status 204
 end
 
 # --- Redirects (public, must stay last) ---
