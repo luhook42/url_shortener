@@ -43,6 +43,15 @@ set :sessions,
     same_site: :lax,             # not sent on most cross-site requests (CSRF defense)
     expire_after: SESSION_TTL    # signed out after 8 hours
 
+# The only sites allowed to use the session cookie from a browser. Exact
+# origins, never patterns: CORS (below) lets these read responses with the
+# cookie, and Rack::Protection lets them make unsafe requests with it.
+DASHBOARD_ORIGINS = ['http://localhost:5173'].freeze
+# Sinatra's HttpOrigin check drops the session on a POST/PUT/DELETE whose
+# Origin isn't this API's own, which blocks CSRF from other sites but also
+# the dashboard. Permit the dashboard; every other origin still loses it.
+set :protection, permitted_origins: DASHBOARD_ORIGINS
+
 # Compared against when an email doesn't exist, so a wrong email takes as long
 # as a wrong password and the response time doesn't reveal which emails exist.
 DUMMY_DIGEST = BCrypt::Password.create(SecureRandom.hex(32))
@@ -87,7 +96,7 @@ end
 
 use Rack::Cors do
   allow do
-    origins 'http://localhost:5173'
+    origins(*DASHBOARD_ORIGINS)
     # credentials: the browser sends and keeps the session cookie on the
     # dashboard's requests. Only safe because origins is an exact list.
     resource '/*', headers: :any, methods: %i[get post put delete options], credentials: true
