@@ -9,6 +9,12 @@ ENV['SESSION_SECRET'] = 'test-secret-' * 8
 require 'active_support/testing/time_helpers'
 require 'minitest/autorun'
 require 'rack/test'
+
+# bcrypt is deliberately slow (about 0.25 s per hash). Tests use the minimum
+# cost so they stay fast; production keeps the default. Set before app.rb
+# loads, because app.rb builds DUMMY_DIGEST at load time.
+require 'bcrypt'
+BCrypt::Engine.cost = BCrypt::Engine::MIN_COST
 require_relative '../app'
 
 class AppTestCase < Minitest::Test
